@@ -5,6 +5,7 @@ import LoginScreen from '@/components/auth/LoginScreen'
 import Dashboard from '@/components/dashboard/Dashboard'
 import UserManagement from '@/components/users/UserManagement'
 import DocumentCreate from '@/components/documents/DocumentCreate'
+import MonitoringManagement from '@/components/monitoring/MonitoringManagement'
 import Layout from '@/components/layout/Layout'
 
 const App: React.FC = () => {
@@ -31,6 +32,7 @@ const App: React.FC = () => {
           <Route path="/" element={<Dashboard />} />
           <Route path="/users" element={<UserManagement />} />
           <Route path="/documents/:userId" element={<DocumentCreate />} />
+          <Route path="/monitoring" element={<MonitoringManagement />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

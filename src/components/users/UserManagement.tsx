@@ -33,6 +33,8 @@ const UserManagement: React.FC = () => {
     disabilitySupportCategory: '',
     supportServiceNumber: '',
     municipalityNumber: '',
+    disabilityWelfareServiceNumber: '',
+    regionalConsultationSupportNumber: '',
     consultantName: '',
     planCreator: ''
   })
@@ -44,6 +46,8 @@ const UserManagement: React.FC = () => {
       disabilitySupportCategory: '',
       supportServiceNumber: '',
       municipalityNumber: '',
+      disabilityWelfareServiceNumber: '',
+      regionalConsultationSupportNumber: '',
       consultantName: '',
       planCreator: ''
     })
@@ -77,6 +81,8 @@ const UserManagement: React.FC = () => {
         disabilitySupportCategory: fullUser.disabilitySupportCategory,
         supportServiceNumber: fullUser.supportServiceNumber,
         municipalityNumber: fullUser.municipalityNumber,
+        disabilityWelfareServiceNumber: fullUser.disabilityWelfareServiceNumber || '',
+        regionalConsultationSupportNumber: fullUser.regionalConsultationSupportNumber || '',
         consultantName: fullUser.consultantName,
         planCreator: fullUser.planCreator
       })
@@ -214,7 +220,29 @@ const UserManagement: React.FC = () => {
                     value={formData.municipalityNumber}
                     onChange={(e) => setFormData(prev => ({ ...prev, municipalityNumber: e.target.value }))}
                     className="input-field"
-                    placeholder="受給者証番号を入力"
+                    placeholder="通所受給者証番号を入力"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">障害福祉サービス受給者証番号</label>
+                  <input
+                    type="text"
+                    value={formData.disabilityWelfareServiceNumber}
+                    onChange={(e) => setFormData(prev => ({ ...prev, disabilityWelfareServiceNumber: e.target.value }))}
+                    className="input-field"
+                    placeholder="障害福祉サービス受給者証番号を入力"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">地域相談支援受給者証番号</label>
+                  <input
+                    type="text"
+                    value={formData.regionalConsultationSupportNumber}
+                    onChange={(e) => setFormData(prev => ({ ...prev, regionalConsultationSupportNumber: e.target.value }))}
+                    className="input-field"
+                    placeholder="地域相談支援受給者証番号を入力"
                   />
                 </div>
 

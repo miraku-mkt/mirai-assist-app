@@ -34,15 +34,15 @@ export const exportServicePlanToExcel = async (
 
   row++
   worksheet.getCell(`A${row}`).value = '障害福祉サービス受給者証番号'
-  worksheet.getCell(`B${row}`).value = user.supportServiceNumber
+  worksheet.getCell(`B${row}`).value = user.disabilityWelfareServiceNumber
   worksheet.getCell(`C${row}`).value = '利用者負担上限額'
-  worksheet.getCell(`D${row}`).value = ''
+  worksheet.getCell(`D${row}`).value = user.supportServiceNumber
   worksheet.getCell(`E${row}`).value = '計画作成担当者'
   worksheet.getCell(`F${row}`).value = user.planCreator
 
   row++
   worksheet.getCell(`A${row}`).value = '地域相談支援受給者証番号'
-  worksheet.getCell(`B${row}`).value = ''
+  worksheet.getCell(`B${row}`).value = user.regionalConsultationSupportNumber
   worksheet.getCell(`C${row}`).value = '通所受給者証番号'
   worksheet.getCell(`D${row}`).value = user.municipalityNumber
 
@@ -210,6 +210,12 @@ export const exportWeeklyScheduleToExcel = async (
   worksheet.getCell(`D${row}`).value = user.disabilitySupportCategory
   worksheet.getCell(`E${row}`).value = '相談支援事業者名'
   worksheet.getCell(`F${row}`).value = user.consultantName
+
+  row++
+  worksheet.getCell(`A${row}`).value = '障害福祉サービス受給者証番号'
+  worksheet.getCell(`B${row}`).value = user.disabilityWelfareServiceNumber
+  worksheet.getCell(`C${row}`).value = '地域相談支援受給者証番号'
+  worksheet.getCell(`D${row}`).value = user.regionalConsultationSupportNumber
 
   row++
   worksheet.getCell(`A${row}`).value = '計画開始年月'
@@ -417,6 +423,12 @@ export const exportMonitoringReportToExcel = async (
   worksheet.getCell(`D${row}`).value = user.disabilitySupportCategory
   worksheet.getCell(`E${row}`).value = '相談支援事業者名'
   worksheet.getCell(`F${row}`).value = user.consultantName
+
+  row++
+  worksheet.getCell(`A${row}`).value = '障害福祉サービス受給者証番号'
+  worksheet.getCell(`B${row}`).value = user.disabilityWelfareServiceNumber
+  worksheet.getCell(`C${row}`).value = '地域相談支援受給者証番号'
+  worksheet.getCell(`D${row}`).value = user.regionalConsultationSupportNumber
 
   row++
   worksheet.getCell(`A${row}`).value = '計画作成日'

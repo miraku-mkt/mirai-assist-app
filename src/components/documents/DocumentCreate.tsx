@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback, createRef, memo } from 'react'
 import { useParams } from 'react-router-dom'
 import { 
   Upload, 
@@ -19,7 +19,7 @@ import {
 import { useUserStore } from '@/stores/userStore'
 import { useDocumentStore } from '@/stores/documentStore'
 
-type DocumentType = 'servicePlan' | 'weeklySchedule' | 'needsAssessment' | 'monitoringReport'
+type DocumentType = 'servicePlan' | 'weeklySchedule' | 'needsAssessment'
 
 interface UploadedFile {
   id: string
@@ -33,7 +33,19 @@ interface UploadedFile {
 const DocumentCreate: React.FC = () => {
   const { userId } = useParams<{ userId: string }>()
   const { getUserById } = useUserStore()
-  const { addInterviewRecord, getInterviewRecordsByUserId } = useDocumentStore()
+  const { 
+    addInterviewRecord, 
+    getInterviewRecordsByUserId,
+    addServicePlan,
+    getServicePlansByUserId,
+    addWeeklySchedule,
+    getWeeklySchedulesByUserId,
+    addNeedsAssessment,
+    getNeedsAssessmentsByUserId,
+    updateServicePlan,
+    updateWeeklySchedule,
+    updateNeedsAssessment
+  } = useDocumentStore()
   
   const [selectedDocType, setSelectedDocType] = useState<DocumentType | null>(null)
   const [interviewText, setInterviewText] = useState('')
@@ -42,6 +54,7 @@ const DocumentCreate: React.FC = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [showDetailedEditor, setShowDetailedEditor] = useState(false)
+  const [localScheduleData, setLocalScheduleData] = useState<any>({})
   const prevUserIdRef = useRef<string | undefined>()
 
   const user = userId ? getUserById(userId) : null
@@ -54,6 +67,64 @@ const DocumentCreate: React.FC = () => {
       prevUserIdRef.current = userId
     }
   }, [userId])
+
+  // 週間スケジュール用の最適化されたonChangeハンドラー
+  const updateTimeSlot = useCallback((day: string, slotIndex: number, field: string, value: any) => {
+    console.log('updateTimeSlot called:', { day, slotIndex, field, value })
+    
+    setGeneratedContent((prev: any) => {
+      console.log('prev generatedContent:', prev)
+      if (!prev || !prev.schedule) {
+        console.log('No prev or schedule, returning prev')
+        return prev
+      }
+
+      const newSchedule = prev.schedule.map((daySchedule: any) => {
+        if (daySchedule.day !== day) return daySchedule
+
+        const newTimeSlots = [...(daySchedule.timeSlots || [])]
+        
+        // timeSlotが存在しない場合は作成
+        if (!newTimeSlots[slotIndex]) {
+          console.log('Creating new timeSlot at index:', slotIndex)
+          newTimeSlots[slotIndex] = { startTime: '', endTime: '', activity: '', isService: false }
+        }
+
+        // フィールドを更新
+        const oldSlot = newTimeSlots[slotIndex]
+        newTimeSlots[slotIndex] = {
+          ...oldSlot,
+          [field]: value
+        }
+        
+        console.log('Updated timeSlot:', newTimeSlots[slotIndex])
+
+        return {
+          ...daySchedule,
+          timeSlots: newTimeSlots
+        }
+      })
+
+      // dayが存在しない場合は追加
+      const dayExists = newSchedule.some((s: any) => s.day === day)
+      if (!dayExists) {
+        console.log('Day does not exist, creating new day schedule')
+        const newTimeSlot = { startTime: '', endTime: '', activity: '', isService: false }
+        newTimeSlot[field as keyof typeof newTimeSlot] = value
+        newSchedule.push({
+          day,
+          timeSlots: [newTimeSlot]
+        })
+      }
+
+      const result = {
+        ...prev,
+        schedule: newSchedule
+      }
+      console.log('New generatedContent:', result)
+      return result
+    })
+  }, [])
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 B'
@@ -73,32 +144,28 @@ const DocumentCreate: React.FC = () => {
 
   const documentTypes = [
     {
+      id: 'needsAssessment' as const,
+      name: 'ニーズ整理票',
+      description: '【第1段階】面談記録からのアセスメント情報整理',
+      icon: ClipboardCheck,
+      color: 'text-purple-600 bg-purple-100',
+      step: 1
+    },
+    {
       id: 'servicePlan' as const,
       name: 'サービス等利用計画',
-      description: 'サービス等利用計画書の作成',
+      description: '【第2段階】ニーズ整理票を基にしたサービス計画書作成',
       icon: FileText,
-      color: 'text-blue-600 bg-blue-100'
+      color: 'text-blue-600 bg-blue-100',
+      step: 2
     },
     {
       id: 'weeklySchedule' as const,
       name: '週間計画表', 
-      description: '週間スケジュールの作成',
+      description: '【第2段階】サービス計画に基づく週間スケジュール作成',
       icon: Calendar,
-      color: 'text-green-600 bg-green-100'
-    },
-    {
-      id: 'needsAssessment' as const,
-      name: 'ニーズ整理票',
-      description: 'アセスメント情報の整理',
-      icon: ClipboardCheck,
-      color: 'text-purple-600 bg-purple-100'
-    },
-    {
-      id: 'monitoringReport' as const,
-      name: 'モニタリング報告書',
-      description: 'モニタリング結果の報告',
-      icon: BarChart3,
-      color: 'text-orange-600 bg-orange-100'
+      color: 'text-green-600 bg-green-100',
+      step: 2
     }
   ]
 
@@ -225,6 +292,58 @@ const DocumentCreate: React.FC = () => {
       setGeneratedContent(mockContent)
       console.log('generatedContent状態が更新されました')
 
+      // 生成された文書をストアに保存
+      switch (selectedDocType) {
+        case 'servicePlan':
+          // 既存のサービス計画があるかチェック
+          const existingServicePlans = getServicePlansByUserId(user.id)
+          if (existingServicePlans.length > 0) {
+            // 更新
+            updateServicePlan(existingServicePlans[existingServicePlans.length - 1].id, {
+              content: mockContent
+            })
+          } else {
+            // 新規作成
+            addServicePlan({
+              userId: user.id,
+              title: `サービス等利用計画 - ${user.actualName}`,
+              content: mockContent,
+              status: 'draft'
+            })
+          }
+          break
+        case 'weeklySchedule':
+          const existingWeeklySchedules = getWeeklySchedulesByUserId(user.id)
+          if (existingWeeklySchedules.length > 0) {
+            updateWeeklySchedule(existingWeeklySchedules[existingWeeklySchedules.length - 1].id, {
+              content: mockContent
+            })
+          } else {
+            addWeeklySchedule({
+              userId: user.id,
+              title: `週間計画表 - ${user.actualName}`,
+              content: mockContent,
+              status: 'draft'
+            })
+          }
+          break
+        case 'needsAssessment':
+          const existingNeedsAssessments = getNeedsAssessmentsByUserId(user.id)
+          if (existingNeedsAssessments.length > 0) {
+            updateNeedsAssessment(existingNeedsAssessments[existingNeedsAssessments.length - 1].id, {
+              content: mockContent
+            })
+          } else {
+            addNeedsAssessment({
+              userId: user.id,
+              title: `ニーズ整理票 - ${user.actualName}`,
+              content: mockContent,
+              status: 'draft'
+            })
+          }
+          break
+      }
+
       // 面談記録を保存
       addInterviewRecord({
         userId: user.id,
@@ -266,14 +385,52 @@ const DocumentCreate: React.FC = () => {
 
       case 'weeklySchedule':
         return {
+          startDate: new Date(),
           schedule: [
-            { day: 'monday', activities: ['9:00-15:00 生活介護サービス'] },
-            { day: 'tuesday', activities: ['10:00-12:00 外来受診', '14:00-16:00 相談支援'] },
-            { day: 'wednesday', activities: ['9:00-15:00 生活介護サービス'] },
-            { day: 'thursday', activities: ['自宅で過ごす'] },
-            { day: 'friday', activities: ['9:00-15:00 生活介護サービス'] },
-            { day: 'saturday', activities: ['家族と過ごす'] },
-            { day: 'sunday', activities: ['休息日'] }
+            {
+              day: 'monday',
+              timeSlots: [
+                { startTime: '09:00', endTime: '15:00', activity: '生活介護サービス', isService: true },
+                { startTime: '19:00', endTime: '20:00', activity: '夕食・入浴', isService: false }
+              ]
+            },
+            {
+              day: 'tuesday', 
+              timeSlots: [
+                { startTime: '10:00', endTime: '12:00', activity: '外来受診', isService: false },
+                { startTime: '14:00', endTime: '16:00', activity: '相談支援', isService: true }
+              ]
+            },
+            {
+              day: 'wednesday',
+              timeSlots: [
+                { startTime: '09:00', endTime: '15:00', activity: '生活介護サービス', isService: true }
+              ]
+            },
+            {
+              day: 'thursday',
+              timeSlots: [
+                { startTime: '10:00', endTime: '16:00', activity: '自宅で過ごす', isService: false }
+              ]
+            },
+            {
+              day: 'friday',
+              timeSlots: [
+                { startTime: '09:00', endTime: '15:00', activity: '生活介護サービス', isService: true }
+              ]
+            },
+            {
+              day: 'saturday',
+              timeSlots: [
+                { startTime: '10:00', endTime: '17:00', activity: '家族と過ごす', isService: false }
+              ]
+            },
+            {
+              day: 'sunday',
+              timeSlots: [
+                { startTime: '10:00', endTime: '16:00', activity: '休息日', isService: false }
+              ]
+            }
           ],
           weeklyServices: '月1回の相談支援、3か月に1回のモニタリング',
           lifeOverview: 'サービス利用により規則正しい生活リズムを構築し、社会参加の機会を増やす'
@@ -282,41 +439,21 @@ const DocumentCreate: React.FC = () => {
       case 'needsAssessment':
         return {
           intake: {
-            basicInfo: '20歳男性、発達障害、家族と同居',
-            expressedNeeds: '就労に向けた生活リズムの改善と対人関係スキルの向上を希望'
+            expressedNeeds: `${user.actualName}さんは「将来的に自立した生活を送りたい」「働く場所を見つけたい」「人とのコミュニケーションを上手になりたい」と希望を表明されている。家族からの支援を受けながらも、できるだけ自分のことは自分でやりたいという意向がある。`,
+            counselorNotes: `${user.disabilityType}（障害支援区分：${user.disabilitySupportCategory}）。家族と同居。日常生活において部分的な支援が必要。医療機関での定期受診あり。これまでの福祉サービス利用経験は限定的。家族の介護負担軽減も課題となっている。`
           },
           assessment: {
-            livingConditions: '家族のサポートあり、基本的な生活は可能',
-            psychologicalConditions: '新しい環境に不安を感じやすい',
-            socialConditions: 'コミュニケーションに課題があるが、意欲は高い'
+            biological: `身体機能：${user.disabilityType}による機能制限があるが、基本的な移動や身の回りのことは概ね自立している。服薬管理は家族による支援が必要。定期的な医療機関受診により健康状態は安定している。疲労しやすい傾向があり、活動量の調整が必要。`,
+            psychological: `認知面では理解力があり、自分の意思を表現することができる。新しい環境や変化に対して不安を感じやすく、時間をかけた説明や段階的な導入が効果的。将来への希望を持っており、意欲的に取り組む姿勢が見られる。自己肯定感の向上が課題。`,
+            social: `家族との関係は良好で、信頼関係が築けている。初対面の人とのコミュニケーションには時間がかかるが、慣れた相手とは適切な関係を維持できる。集団での活動には参加意欲があるものの、人数や環境によって疲労度が変わる。社会性の向上に向けた段階的な取り組みが有効。`,
+            environment: `家族との同居により安定した生活環境が確保されている。住環境は障害に配慮した設備が一部整備済み。地域の社会資源については情報が限定的で、活用の余地がある。交通手段は主に家族による送迎に依存しており、公共交通機関の利用には課題がある。`,
+            professionalAssessment: `医師からは「症状は安定しており、適切な環境と支援があれば社会参加は十分可能」との見解。これまでの支援者からは「本人のペースに合わせた段階的な支援が効果的」との評価。心理検査結果では認知機能に大きな問題はなく、適応能力の向上が期待される。`,
+            supportIssues: `1. 生活リズムの安定化と体調管理の支援 2. 社会参加に向けた段階的な環境設定 3. コミュニケーション能力の向上支援 4. 家族の介護負担軽減 5. 地域資源の活用促進 6. 将来的な就労に向けた準備支援 7. 自己肯定感と自立意識の醸成`
           },
           planning: {
-            supportGoals: '段階的な社会参加と就労準備',
-            supportMethods: '生活介護サービスを活用した日中活動の定着'
-          }
-        }
-
-      case 'monitoringReport':
-        return {
-          comprehensiveSupport: '段階的な支援により着実に改善が見られる',
-          overallStatus: '利用者・家族ともに満足度が高く、目標に向けて順調に進んでいる',
-          monitoringItems: [
-            {
-              priority: 1,
-              supportGoal: '生活リズムの改善',
-              completionPeriod: '3か月',
-              serviceStatus: '週3回の定期利用が定着している',
-              userSatisfaction: '満足。スタッフとの関係も良好',
-              goalAchievement: '80% - 大幅な改善が見られる',
-              currentIssues: '雨天時の通所に課題',
-              planChanges: {
-                serviceChange: false,
-                serviceContent: false,
-                planModification: false
-              },
-              otherNotes: '今後も継続的な支援が必要'
-            }
-          ]
+            supportMethods: `本人のペースを尊重した段階的な支援プログラムを実施。まずは生活介護サービスでの日中活動を通じて生活リズムを安定させ、集団活動への適応を図る。併せて相談支援を活用し、本人・家族の不安軽減と情報提供を行う。医療機関との連携を継続し、定期的なモニタリングを実施する。`
+          },
+          personSummary: `${user.actualName}さんは向上心があり、支援者との信頼関係を築くことができる方です。自分のペースで着実に成長していく力を持っており、適切な環境と段階的な支援により、社会参加と自立に向けた歩みを進めることが期待されます。`
         }
 
       default:
@@ -329,6 +466,140 @@ const DocumentCreate: React.FC = () => {
     setShowDetailedEditor(true)
   }
 
+  const handleManualCreate = () => {
+    console.log('手動作成ボタンがクリックされました')
+    console.log('選択された書類タイプ:', selectedDocType)
+    
+    if (!selectedDocType) {
+      alert('書類の種類を選択してください')
+      return
+    }
+
+    // 空のテンプレートを生成
+    const emptyTemplate = generateEmptyTemplate(selectedDocType, user)
+    setGeneratedContent(emptyTemplate)
+    console.log('空のテンプレートが生成されました:', emptyTemplate)
+    
+    // 空のテンプレートをストアに保存
+    if (userId) {
+      switch (selectedDocType) {
+        case 'servicePlan':
+          const existingServicePlans = getServicePlansByUserId(userId)
+          if (existingServicePlans.length > 0) {
+            updateServicePlan(existingServicePlans[existingServicePlans.length - 1].id, {
+              content: emptyTemplate
+            })
+          } else {
+            addServicePlan({
+              userId: userId,
+              title: `サービス等利用計画 - ${user?.actualName}`,
+              content: emptyTemplate,
+              status: 'draft'
+            })
+          }
+          break
+        case 'weeklySchedule':
+          const existingWeeklySchedules = getWeeklySchedulesByUserId(userId)
+          if (existingWeeklySchedules.length > 0) {
+            updateWeeklySchedule(existingWeeklySchedules[existingWeeklySchedules.length - 1].id, {
+              content: emptyTemplate
+            })
+          } else {
+            addWeeklySchedule({
+              userId: userId,
+              title: `週間計画表 - ${user?.actualName}`,
+              content: emptyTemplate,
+              status: 'draft'
+            })
+          }
+          break
+        case 'needsAssessment':
+          const existingNeedsAssessments = getNeedsAssessmentsByUserId(userId)
+          if (existingNeedsAssessments.length > 0) {
+            updateNeedsAssessment(existingNeedsAssessments[existingNeedsAssessments.length - 1].id, {
+              content: emptyTemplate
+            })
+          } else {
+            addNeedsAssessment({
+              userId: userId,
+              title: `ニーズ整理票 - ${user?.actualName}`,
+              content: emptyTemplate,
+              status: 'draft'
+            })
+          }
+          break
+      }
+    }
+    
+    // 直接詳細編集画面を開く
+    setShowDetailedEditor(true)
+  }
+
+  const generateEmptyTemplate = (docType: DocumentType, user: any) => {
+    switch (docType) {
+      case 'servicePlan':
+        return {
+          lifeGoals: '',
+          comprehensiveSupport: '',
+          longTermGoals: '',
+          shortTermGoals: '',
+          services: [
+            {
+              priority: 1,
+              issueToSolve: '',
+              supportGoal: '',
+              completionPeriod: '',
+              serviceType: '',
+              serviceDetails: '',
+              providerName: '',
+              userRole: '',
+              evaluationPeriod: '',
+              otherNotes: ''
+            }
+          ]
+        }
+      
+      case 'weeklySchedule':
+        return {
+          startDate: new Date(),
+          schedule: [
+            { day: 'monday', timeSlots: [{ startTime: '', endTime: '', activity: '', isService: false }] },
+            { day: 'tuesday', timeSlots: [{ startTime: '', endTime: '', activity: '', isService: false }] },
+            { day: 'wednesday', timeSlots: [{ startTime: '', endTime: '', activity: '', isService: false }] },
+            { day: 'thursday', timeSlots: [{ startTime: '', endTime: '', activity: '', isService: false }] },
+            { day: 'friday', timeSlots: [{ startTime: '', endTime: '', activity: '', isService: false }] },
+            { day: 'saturday', timeSlots: [{ startTime: '', endTime: '', activity: '', isService: false }] },
+            { day: 'sunday', timeSlots: [{ startTime: '', endTime: '', activity: '', isService: false }] }
+          ],
+          weeklyServices: '',
+          lifeOverview: ''
+        }
+      
+      case 'needsAssessment':
+        return {
+          intake: {
+            expressedNeeds: '',
+            counselorNotes: ''
+          },
+          assessment: {
+            biological: '',
+            psychological: '',
+            social: '',
+            environment: '',
+            professionalAssessment: '',
+            supportIssues: ''
+          },
+          planning: {
+            supportMethods: ''
+          },
+          personSummary: ''
+        }
+      
+      default:
+        return null
+    }
+  }
+
   const exportToExcel = () => {
     // 実際の実装では、ExcelJSを使用してExcelファイルを生成
     alert('Excel出力機能は準備中です')
@@ -339,7 +610,57 @@ const DocumentCreate: React.FC = () => {
   }
 
   const handleSaveDetailedEdit = () => {
+    if (!selectedDocType || !generatedContent || !userId) return
+    
     // 詳細編集の保存処理
+    switch (selectedDocType) {
+      case 'servicePlan':
+        const existingServicePlans = getServicePlansByUserId(userId)
+        if (existingServicePlans.length > 0) {
+          updateServicePlan(existingServicePlans[existingServicePlans.length - 1].id, {
+            content: generatedContent
+          })
+        } else {
+          addServicePlan({
+            userId: userId,
+            title: `サービス等利用計画 - ${user?.actualName}`,
+            content: generatedContent,
+            status: 'draft'
+          })
+        }
+        break
+      case 'weeklySchedule':
+        const existingWeeklySchedules = getWeeklySchedulesByUserId(userId)
+        if (existingWeeklySchedules.length > 0) {
+          updateWeeklySchedule(existingWeeklySchedules[existingWeeklySchedules.length - 1].id, {
+            content: generatedContent
+          })
+        } else {
+          addWeeklySchedule({
+            userId: userId,
+            title: `週間計画表 - ${user?.actualName}`,
+            content: generatedContent,
+            status: 'draft'
+          })
+        }
+        break
+      case 'needsAssessment':
+        const existingNeedsAssessments = getNeedsAssessmentsByUserId(userId)
+        if (existingNeedsAssessments.length > 0) {
+          updateNeedsAssessment(existingNeedsAssessments[existingNeedsAssessments.length - 1].id, {
+            content: generatedContent
+          })
+        } else {
+          addNeedsAssessment({
+            userId: userId,
+            title: `ニーズ整理票 - ${user?.actualName}`,
+            content: generatedContent,
+            status: 'draft'
+          })
+        }
+        break
+    }
+    
     alert('編集内容を保存しました')
     setShowDetailedEditor(false)
   }
@@ -424,11 +745,32 @@ const DocumentCreate: React.FC = () => {
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 mb-4">サービス詳細</h3>
                   {generatedContent.services?.map((service: any, index: number) => (
-                    <div key={index} className="border rounded-lg p-4 mb-4 bg-gray-50">
-                      <h4 className="font-medium text-gray-800 mb-3">優先順位 {service.priority}</h4>
+                    <div key={index} className="border rounded-lg p-4 mb-4 bg-gray-50 relative">
+                      <div className="flex justify-between items-center mb-3">
+                        <h4 className="font-medium text-gray-800">優先順位 {service.priority}</h4>
+                        {generatedContent.services.length > 1 && (
+                          <button
+                            onClick={() => {
+                              const newServices = generatedContent.services.filter((_, i) => i !== index)
+                              // 優先順位を再調整
+                              const reorderedServices = newServices.map((service, idx) => ({
+                                ...service,
+                                priority: idx + 1
+                              }))
+                              setGeneratedContent({
+                                ...generatedContent,
+                                services: reorderedServices
+                              })
+                            }}
+                            className="text-red-600 hover:text-red-800 text-sm px-2 py-1 hover:bg-red-50 rounded"
+                          >
+                            ✕ 削除
+                          </button>
+                        )}
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="form-label text-sm">解決すべき課題</label>
+                          <label className="form-label text-sm">解決すべき課題（本人のニーズ）</label>
                           <input
                             type="text"
                             value={service.issueToSolve || ''}
@@ -461,7 +803,7 @@ const DocumentCreate: React.FC = () => {
                           />
                         </div>
 
-                        <div>
+                        <div className="md:col-span-2">
                           <label className="form-label text-sm">達成時期</label>
                           <input
                             type="text"
@@ -478,25 +820,12 @@ const DocumentCreate: React.FC = () => {
                           />
                         </div>
 
-                        <div>
-                          <label className="form-label text-sm">福祉サービス等</label>
-                          <input
-                            type="text"
-                            value={service.serviceType || ''}
-                            onChange={(e) => {
-                              const newServices = [...generatedContent.services]
-                              newServices[index].serviceType = e.target.value
-                              setGeneratedContent({
-                                ...generatedContent,
-                                services: newServices
-                              })
-                            }}
-                            className="input-field"
-                          />
+                        <div className="md:col-span-2">
+                          <h5 className="text-sm font-medium text-gray-700 mb-2 mt-4">福祉サービス等</h5>
                         </div>
 
                         <div className="md:col-span-2">
-                          <label className="form-label text-sm">種類・内容・量・頻度・時間</label>
+                          <label className="form-label text-sm">種類・内容・量（頻度・時間）</label>
                           <textarea
                             value={service.serviceDetails || ''}
                             onChange={(e) => {
@@ -513,8 +842,8 @@ const DocumentCreate: React.FC = () => {
                           />
                         </div>
 
-                        <div>
-                          <label className="form-label text-sm">提供事業所名</label>
+                        <div className="md:col-span-2">
+                          <label className="form-label text-sm">提供事業所名（担当者名・電話）</label>
                           <input
                             type="text"
                             value={service.providerName || ''}
@@ -531,7 +860,7 @@ const DocumentCreate: React.FC = () => {
                         </div>
 
                         <div>
-                          <label className="form-label text-sm">本人の役割</label>
+                          <label className="form-label text-sm">課題解決のための本人の役割</label>
                           <input
                             type="text"
                             value={service.userRole || ''}
@@ -583,6 +912,233 @@ const DocumentCreate: React.FC = () => {
                       </div>
                     </div>
                   ))}
+                  
+                  <div className="flex justify-between items-center mt-4">
+                    <button
+                      onClick={() => {
+                        const newServices = [...(generatedContent.services || [])]
+                        const newPriority = newServices.length > 0 ? Math.max(...newServices.map(s => s.priority)) + 1 : 1
+                        newServices.push({
+                          priority: newPriority,
+                          issueToSolve: '',
+                          supportGoal: '',
+                          completionPeriod: '',
+                          serviceType: '',
+                          serviceDetails: '',
+                          providerName: '',
+                          userRole: '',
+                          evaluationPeriod: '',
+                          otherNotes: ''
+                        })
+                        setGeneratedContent({
+                          ...generatedContent,
+                          services: newServices
+                        })
+                      }}
+                      className="btn-secondary flex items-center space-x-2"
+                    >
+                      <span>+</span>
+                      <span>サービス項目を追加</span>
+                    </button>
+                    
+                    {generatedContent.services && generatedContent.services.length > 1 && (
+                      <button
+                        onClick={() => {
+                          const newServices = [...generatedContent.services]
+                          newServices.pop() // 最後の項目を削除
+                          setGeneratedContent({
+                            ...generatedContent,
+                            services: newServices
+                          })
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2"
+                      >
+                        <span>−</span>
+                        <span>最後の項目を削除</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedDocType === 'weeklySchedule' && (
+              <div className="space-y-6">
+                <div>
+                  <label className="form-label">計画開始年月</label>
+                  <input
+                    type="month"
+                    value={generatedContent.startDate ? new Date(generatedContent.startDate).toISOString().slice(0, 7) : ''}
+                    onChange={(e) => setGeneratedContent({
+                      ...generatedContent,
+                      startDate: e.target.value ? new Date(e.target.value + '-01') : new Date()
+                    })}
+                    className="input-field"
+                  />
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">週間スケジュール</h3>
+                  <div className="space-y-4">
+                    {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day, dayIndex) => {
+                      const dayNames = {
+                        monday: '月曜日',
+                        tuesday: '火曜日', 
+                        wednesday: '水曜日',
+                        thursday: '木曜日',
+                        friday: '金曜日',
+                        saturday: '土曜日',
+                        sunday: '日曜日'
+                      }
+                      
+                      const currentSchedule = generatedContent.schedule?.find((s: any) => s.day === day) || { day, timeSlots: [{ startTime: '', endTime: '', activity: '', isService: false }] }
+                      
+                      return (
+                        <div key={day} className="border rounded-lg p-4 bg-gray-50">
+                          <h4 className="font-medium text-gray-800 mb-3">{dayNames[day as keyof typeof dayNames]}</h4>
+                          
+                          <div className="space-y-2">
+                            {(currentSchedule.timeSlots && currentSchedule.timeSlots.length > 0 ? currentSchedule.timeSlots : [{ startTime: '', endTime: '', activity: '', isService: false }]).map((slot: any, slotIndex: number) => (
+                              <div key={`${day}-${slotIndex}`} className="grid grid-cols-1 md:grid-cols-4 gap-2 items-center p-2 bg-white rounded border">
+                                <input
+                                  type="time"
+                                  value={slot?.startTime || ''}
+                                  onChange={(e) => updateTimeSlot(day, slotIndex, 'startTime', e.target.value)}
+                                  className="input-field text-sm"
+                                  title="開始時刻"
+                                />
+                                <input
+                                  type="time"
+                                  value={slot?.endTime || ''}
+                                  onChange={(e) => updateTimeSlot(day, slotIndex, 'endTime', e.target.value)}
+                                  className="input-field text-sm"
+                                  title="終了時刻"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="活動内容を入力"
+                                  defaultValue={slot?.activity || ''}
+                                  onBlur={(e) => {
+                                    // フォーカスが外れた時のみ状態を更新
+                                    const newValue = e.target.value
+                                    setGeneratedContent((prev: any) => {
+                                      if (!prev?.schedule) return prev
+                                      
+                                      const schedule = prev.schedule.map((daySchedule: any) => {
+                                        if (daySchedule.day !== day) return daySchedule
+                                        
+                                        const timeSlots = [...(daySchedule.timeSlots || [])]
+                                        if (!timeSlots[slotIndex]) {
+                                          timeSlots[slotIndex] = { startTime: '', endTime: '', activity: '', isService: false }
+                                        }
+                                        
+                                        timeSlots[slotIndex] = {
+                                          ...timeSlots[slotIndex],
+                                          activity: newValue
+                                        }
+                                        
+                                        return { ...daySchedule, timeSlots }
+                                      })
+                                      
+                                      return { ...prev, schedule }
+                                    })
+                                  }}
+                                  className="input-field text-sm flex-1"
+                                  style={{ minWidth: '150px' }}
+                                />
+                                <div className="flex space-x-1">
+                                  <label className="flex items-center text-sm">
+                                    <input
+                                      type="checkbox"
+                                      checked={slot?.isService || false}
+                                      onChange={(e) => updateTimeSlot(day, slotIndex, 'isService', e.target.checked)}
+                                      className="mr-1"
+                                    />
+                                    サービス
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newSchedule = [...(generatedContent.schedule || [])]
+                                      let daySchedule = newSchedule.find(s => s.day === day)
+                                      if (daySchedule && daySchedule.timeSlots) {
+                                        daySchedule.timeSlots.splice(slotIndex, 1)
+                                      }
+                                      setGeneratedContent({
+                                        ...generatedContent,
+                                        schedule: newSchedule
+                                      })
+                                    }}
+                                    className="text-red-600 hover:text-red-800 text-sm px-2 py-1"
+                                  >
+                                    削除
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                            
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newSchedule = [...(generatedContent.schedule || [])]
+                                let daySchedule = newSchedule.find(s => s.day === day)
+                                if (!daySchedule) {
+                                  daySchedule = { day, timeSlots: [] }
+                                  newSchedule.push(daySchedule)
+                                }
+                                if (!daySchedule.timeSlots) {
+                                  daySchedule.timeSlots = []
+                                }
+                                daySchedule.timeSlots.push({
+                                  startTime: '',
+                                  endTime: '',
+                                  activity: '',
+                                  isService: false
+                                })
+                                setGeneratedContent({
+                                  ...generatedContent,
+                                  schedule: newSchedule
+                                })
+                              }}
+                              className="text-primary-600 hover:text-primary-800 text-sm font-medium"
+                            >
+                              + 時間帯を追加
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="form-label">週単位以外のサービス</label>
+                  <textarea
+                    value={generatedContent.weeklyServices || ''}
+                    onChange={(e) => setGeneratedContent({
+                      ...generatedContent,
+                      weeklyServices: e.target.value
+                    })}
+                    className="textarea-field"
+                    style={{ resize: 'vertical' }}
+                    rows={3}
+                    placeholder="月1回のサービス、隔週のサービス、季節行事など"
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">サービス提供によって実現する生活の全体像</label>
+                  <textarea
+                    value={generatedContent.lifeOverview || ''}
+                    onChange={(e) => setGeneratedContent({
+                      ...generatedContent,
+                      lifeOverview: e.target.value
+                    })}
+                    className="textarea-field"
+                    style={{ resize: 'vertical' }}
+                    rows={4}
+                    placeholder="本人が目指す生活の姿、サービス利用による生活の変化・向上など"
+                  />
                 </div>
               </div>
             )}
@@ -838,14 +1394,53 @@ const DocumentCreate: React.FC = () => {
         <div className="space-y-6">
           {/* 書類タイプ選択 */}
           <div className="card">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">
               1. 作成する書類を選択
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>📋 書類作成の流れ：</strong><br />
+                ① 面談記録から「ニーズ整理票」を作成（アセスメント）<br />
+                ② ニーズ整理票を基に「サービス等利用計画」と「週間計画表」を作成<br />
+                ③ 計画実施後、「モニタリング報告書」は別途モニタリング管理で作成
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {documentTypes.map((docType) => (
                 <button
                   key={docType.id}
-                  onClick={() => setSelectedDocType(docType.id)}
+                  onClick={() => {
+                    setSelectedDocType(docType.id)
+                    
+                    // 既存の保存された文書があるかチェックして読み込む
+                    if (userId) {
+                      let existingDocument = null
+                      switch (docType.id) {
+                        case 'servicePlan':
+                          const servicePlans = getServicePlansByUserId(userId)
+                          existingDocument = servicePlans.length > 0 ? servicePlans[servicePlans.length - 1] : null
+                          break
+                        case 'weeklySchedule':
+                          const weeklySchedules = getWeeklySchedulesByUserId(userId)
+                          existingDocument = weeklySchedules.length > 0 ? weeklySchedules[weeklySchedules.length - 1] : null
+                          break
+                        case 'needsAssessment':
+                          const needsAssessments = getNeedsAssessmentsByUserId(userId)
+                          existingDocument = needsAssessments.length > 0 ? needsAssessments[needsAssessments.length - 1] : null
+                          break
+                      }
+                      
+                      if (existingDocument) {
+                        // 保存されている文書の内容を読み込む
+                        setGeneratedContent(existingDocument.content)
+                      } else {
+                        // 既存の文書がない場合はクリア
+                        setGeneratedContent(null)
+                      }
+                    } else {
+                      setGeneratedContent(null)
+                    }
+                  }}
                   className={`p-4 rounded-lg border-2 transition-colors text-left ${
                     selectedDocType === docType.id
                       ? 'border-primary-500 bg-primary-50'
@@ -994,28 +1589,43 @@ const DocumentCreate: React.FC = () => {
             <div>ボタン有効: {selectedDocType && interviewText.trim() && !isGenerating ? 'はい' : 'いいえ'}</div>
           </div>
 
-          {/* AI生成ボタン */}
-          <button
-            onClick={handleGenerateDocument}
-            disabled={!selectedDocType || !interviewText.trim() || isGenerating}
-            className={`w-full min-h-[44px] flex items-center justify-center font-medium py-3 px-6 rounded-lg transition-colors duration-200 ${
-              !selectedDocType || !interviewText.trim() || isGenerating
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-primary-600 hover:bg-primary-700 text-white'
-            }`}
-          >
-            {isGenerating ? (
-              <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />
-                AI生成中...
-              </>
-            ) : (
-              <>
-                <Sparkles size={20} className="mr-2" />
-                AIで書類を生成
-              </>
-            )}
-          </button>
+          {/* 生成・作成ボタン */}
+          <div className="flex space-x-3">
+            <button
+              onClick={handleGenerateDocument}
+              disabled={!selectedDocType || !interviewText.trim() || isGenerating}
+              className={`flex-1 min-h-[44px] flex items-center justify-center font-medium py-3 px-6 rounded-lg transition-colors duration-200 ${
+                !selectedDocType || !interviewText.trim() || isGenerating
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-primary-600 hover:bg-primary-700 text-white'
+              }`}
+            >
+              {isGenerating ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />
+                  AI生成中...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={20} className="mr-2" />
+                  AIで書類を生成
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleManualCreate}
+              disabled={!selectedDocType || isGenerating}
+              className={`flex-1 min-h-[44px] flex items-center justify-center font-medium py-3 px-6 rounded-lg transition-colors duration-200 ${
+                !selectedDocType || isGenerating
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-600 hover:bg-gray-700 text-white'
+              }`}
+            >
+              <FileText size={20} className="mr-2" />
+              手動で作成
+            </button>
+          </div>
         </div>
 
         {/* 右側：生成結果 */}
@@ -1053,11 +1663,46 @@ const DocumentCreate: React.FC = () => {
                   )}
                   {selectedDocType === 'needsAssessment' && (
                     <>
-                      <p><strong>基本情報:</strong> {generatedContent.intake.basicInfo}</p>
-                      <p><strong>表現されたニーズ:</strong> {generatedContent.intake.expressedNeeds}</p>
+                      <p><strong>表現されたニーズ:</strong> {generatedContent.intake?.expressedNeeds}</p>
+                      <p><strong>相談員がおさえておきたい情報:</strong> {generatedContent.intake?.counselorNotes}</p>
+                      <p><strong>生物的なこと:</strong> {generatedContent.assessment?.biological}</p>
+                      <p><strong>心理的なこと:</strong> {generatedContent.assessment?.psychological}</p>
                     </>
                   )}
-                  {/* 他の書類タイプの表示内容 */}
+                  {selectedDocType === 'weeklySchedule' && (
+                    <>
+                      <p><strong>週単位以外のサービス:</strong> {generatedContent.weeklyServices}</p>
+                      <p><strong>生活の全体像:</strong> {generatedContent.lifeOverview}</p>
+                      <div className="mt-3">
+                        <strong>週間スケジュール（主要活動）:</strong>
+                        <div className="mt-2 text-xs">
+                          {generatedContent.schedule?.map((daySchedule: any) => (
+                            <div key={daySchedule.day} className="mb-1">
+                              <span className="font-medium capitalize">
+                                {daySchedule.day === 'monday' ? '月曜' : 
+                                 daySchedule.day === 'tuesday' ? '火曜' : 
+                                 daySchedule.day === 'wednesday' ? '水曜' : 
+                                 daySchedule.day === 'thursday' ? '木曜' : 
+                                 daySchedule.day === 'friday' ? '金曜' : 
+                                 daySchedule.day === 'saturday' ? '土曜' : 
+                                 daySchedule.day === 'sunday' ? '日曜' : daySchedule.day}:
+                              </span>
+                              {daySchedule.timeSlots?.filter((slot: any) => slot.activity).map((slot: any, idx: number) => (
+                                <span key={idx} className="ml-2">
+                                  {slot.startTime && slot.endTime ? `${slot.startTime}-${slot.endTime} ` : ''}
+                                  {slot.activity}
+                                  {idx < daySchedule.timeSlots.filter((s: any) => s.activity).length - 1 ? ', ' : ''}
+                                </span>
+                              ))}
+                              {!daySchedule.timeSlots?.some((slot: any) => slot.activity) && (
+                                <span className="ml-2 text-gray-500">活動なし</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 

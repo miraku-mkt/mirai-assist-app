@@ -7,6 +7,8 @@ export interface User {
   disabilitySupportCategory: string
   supportServiceNumber: string
   municipalityNumber: string
+  disabilityWelfareServiceNumber: string // 障害福祉サービス受給者証番号
+  regionalConsultationSupportNumber: string // 地域相談支援受給者証番号
   consultantName: string
   planCreator: string
   createdAt: Date

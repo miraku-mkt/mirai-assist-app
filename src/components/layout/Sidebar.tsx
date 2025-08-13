@@ -29,6 +29,12 @@ const Sidebar: React.FC = () => {
       icon: Users,
       label: '利用者管理',
       description: '利用者の登録・編集'
+    },
+    {
+      to: '/monitoring',
+      icon: BarChart3,
+      label: 'モニタリング管理',
+      description: 'モニタリング報告書の作成・管理'
     }
   ]
 
@@ -37,26 +43,8 @@ const Sidebar: React.FC = () => {
     {
       to: `/documents/${currentUser.id}`,
       icon: FileText,
-      label: 'サービス等利用計画',
-      description: '計画書の作成・編集'
-    },
-    {
-      to: `/weekly-schedule/${currentUser.id}`,
-      icon: Calendar,
-      label: '週間計画表',
-      description: 'スケジュールの作成'
-    },
-    {
-      to: `/needs-assessment/${currentUser.id}`,
-      icon: ClipboardCheck,
-      label: 'ニーズ整理票',
-      description: 'アセスメント情報'
-    },
-    {
-      to: `/monitoring/${currentUser.id}`,
-      icon: BarChart3,
-      label: 'モニタリング報告書',
-      description: 'モニタリング結果'
+      label: '書類作成',
+      description: '計画書・スケジュール・アセスメント'
     }
   ] : []
 
