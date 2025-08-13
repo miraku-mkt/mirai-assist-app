@@ -1,0 +1,41 @@
+import React, { useEffect } from 'react'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { useAuthStore } from '@/stores/authStore'
+import LoginScreen from '@/components/auth/LoginScreen'
+import Dashboard from '@/components/dashboard/Dashboard'
+import UserManagement from '@/components/users/UserManagement'
+import DocumentCreate from '@/components/documents/DocumentCreate'
+import Layout from '@/components/layout/Layout'
+
+const App: React.FC = () => {
+  const { isAuthenticated, checkAuthExpiry } = useAuthStore()
+
+  useEffect(() => {
+    // 認証の期限をチェック
+    checkAuthExpiry()
+    
+    // 1分ごとに認証期限をチェック
+    const interval = setInterval(checkAuthExpiry, 60000)
+    
+    return () => clearInterval(interval)
+  }, [checkAuthExpiry])
+
+  if (!isAuthenticated) {
+    return <LoginScreen />
+  }
+
+  return (
+    <Router>
+      <Layout>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/users" element={<UserManagement />} />
+          <Route path="/documents/:userId" element={<DocumentCreate />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Layout>
+    </Router>
+  )
+}
+
+export default App

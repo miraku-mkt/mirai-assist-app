@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'Meiryo', sans-serif;
+    line-height: 1.6;
+    color: #1f2937;
+    background-color: #f9fafb;
+  }
+
+  button:focus,
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-700 focus:bg-primary-700 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[44px] flex items-center justify-center;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-100 hover:bg-gray-200 focus:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[44px] flex items-center justify-center;
+  }
+
+  .btn-danger {
+    @apply bg-error-500 hover:bg-error-600 focus:bg-error-600 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[44px] flex items-center justify-center;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200 min-h-[44px];
+  }
+
+  .textarea-field {
+    @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200 min-h-[88px];
+    resize: vertical;
+  }
+
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6;
+  }
+
+  .card-header {
+    @apply border-b border-gray-200 pb-4 mb-6;
+  }
+
+  .form-group {
+    @apply space-y-2 mb-4;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-gray-700 mb-2;
+  }
+
+  .error-message {
+    @apply text-error-600 text-sm mt-1;
+  }
+
+  .success-message {
+    @apply text-success-600 text-sm mt-1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
