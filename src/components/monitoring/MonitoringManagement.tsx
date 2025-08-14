@@ -106,16 +106,9 @@ const MonitoringManagement: React.FC = () => {
                   return (
                     <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-4 px-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                            <span className="text-sm font-medium text-primary-600">
-                              {fullUser?.actualName?.charAt(0) || '?'}
-                            </span>
-                          </div>
-                          <span className="font-medium text-gray-900">
-                            {fullUser?.actualName || '名前未設定'}
-                          </span>
-                        </div>
+                        <span className="font-medium text-gray-900">
+                          {fullUser?.actualName || '名前未設定'}
+                        </span>
                       </td>
                       <td className="py-4 px-4 text-gray-700">
                         {user.disabilityType || '-'}

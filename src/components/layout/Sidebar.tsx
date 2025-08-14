@@ -31,6 +31,12 @@ const Sidebar: React.FC = () => {
       description: '利用者の登録・編集'
     },
     {
+      to: '/calendar',
+      icon: Calendar,
+      label: '面談カレンダー',
+      description: '面談予定の確認・管理'
+    },
+    {
       to: '/monitoring',
       icon: BarChart3,
       label: 'モニタリング管理',

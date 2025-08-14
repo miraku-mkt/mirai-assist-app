@@ -13,6 +13,17 @@ export interface User {
   planCreator: string
   createdAt: Date
   updatedAt: Date
+  // 期限管理用フィールド
+  benefitDecisionDate?: Date // 支給決定日
+  lastPlanDate?: Date // 最新の計画作成日
+  nextMonitoringDate?: Date // 次回モニタリング予定日
+  planExpiryDate?: Date // 計画の有効期限
+  supportStartDate?: Date // 支援開始日
+  
+  // 面談管理用フィールド
+  nextInterviewId?: string // 次回予定されている面談のID
+  lastInterviewDate?: Date // 最終面談実施日
+  interviewFrequency?: 'weekly' | 'biweekly' | 'monthly' | 'as_needed' // 面談頻度
 }
 
 // サービス等利用計画の型定義
@@ -167,4 +178,64 @@ export interface AuthState {
   isAuthenticated: boolean
   pin: string
   lastAuthTime: Date | null
+}
+
+// タスク管理の型定義
+export interface Task {
+  id: string
+  userId: string
+  type: 'plan_creation' | 'plan_update' | 'monitoring' | 'document_review' | 'follow_up'
+  title: string
+  description: string
+  dueDate: Date
+  priority: 'high' | 'medium' | 'low'
+  status: 'pending' | 'in_progress' | 'completed' | 'overdue'
+  documentType?: 'servicePlan' | 'weeklySchedule' | 'needsAssessment' | 'monitoringReport'
+  documentId?: string
+  createdAt: Date
+  completedAt?: Date
+}
+
+// ダッシュボード統計の型定義
+export interface DashboardStats {
+  totalUsers: number
+  overdueUsers: number
+  todayTasks: number
+  weeklyTasks: number
+  documentsCreatedToday: number
+  documentsCreatedThisWeek: number
+  upcomingDeadlines: number
+}
+
+// 進捗ステータスの型定義
+export interface UserProgress {
+  userId: string
+  documentsStatus: {
+    servicePlan: 'not_started' | 'in_progress' | 'completed' | 'needs_update'
+    weeklySchedule: 'not_started' | 'in_progress' | 'completed' | 'needs_update'
+    needsAssessment: 'not_started' | 'in_progress' | 'completed' | 'needs_update'
+    monitoringReport: 'not_started' | 'in_progress' | 'completed' | 'needs_update'
+  }
+  nextAction: string
+  urgencyLevel: 'low' | 'medium' | 'high' | 'urgent'
+  lastActivity: Date
+}
+
+// 面談記録の型定義（新規追加）
+export interface InterviewSession {
+  id: string
+  userId: string
+  scheduledDate: Date
+  endDate: Date // 面談終了時間
+  actualDate?: Date // 実際に実施した日時
+  location: string
+  purpose: string // 面談の目的（初回面談、モニタリング、緊急対応など）
+  status: 'scheduled' | 'completed' | 'cancelled' | 'rescheduled'
+  participants: string[] // 参加者（利用者、家族、関係者など）
+  notes?: string // 面談メモ・記録
+  nextActionItems?: string[] // 次回までのアクション項目
+  nextInterviewDate?: Date // 次回面談予定日
+  documentReferences?: string[] // 関連する書類ID
+  createdAt: Date
+  updatedAt: Date
 }

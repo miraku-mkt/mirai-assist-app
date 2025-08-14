@@ -9,6 +9,7 @@ import {
   EyeOff 
 } from 'lucide-react'
 import { useUserStore } from '@/stores/userStore'
+import { useInterviewStore } from '@/stores/interviewStore'
 import { User } from '@/types'
 import { format } from 'date-fns'
 import { ja } from 'date-fns/locale'
@@ -24,6 +25,8 @@ const UserManagement: React.FC = () => {
     setCurrentUser 
   } = useUserStore()
   
+  const { addInterview } = useInterviewStore()
+  
   const [showForm, setShowForm] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [showActualNames, setShowActualNames] = useState(true)
@@ -36,7 +39,16 @@ const UserManagement: React.FC = () => {
     disabilityWelfareServiceNumber: '',
     regionalConsultationSupportNumber: '',
     consultantName: '',
-    planCreator: ''
+    planCreator: '',
+    // 期限管理関連フィールド
+    benefitDecisionDate: '',
+    // 面談関連フィールド
+    nextInterviewDate: '',
+    nextInterviewTime: '',
+    nextInterviewEndTime: '',
+    interviewLocation: '',
+    interviewPurpose: '',
+    interviewFrequency: 'monthly'
   })
 
   const resetForm = () => {
@@ -49,7 +61,16 @@ const UserManagement: React.FC = () => {
       disabilityWelfareServiceNumber: '',
       regionalConsultationSupportNumber: '',
       consultantName: '',
-      planCreator: ''
+      planCreator: '',
+      // 期限管理関連フィールド
+      benefitDecisionDate: '',
+      // 面談関連フィールド
+      nextInterviewDate: '',
+      nextInterviewTime: '',
+      nextInterviewEndTime: '',
+      interviewLocation: '',
+      interviewPurpose: '',
+      interviewFrequency: 'monthly'
     })
     setShowForm(false)
     setEditingUser(null)
@@ -63,10 +84,46 @@ const UserManagement: React.FC = () => {
       return
     }
 
+    // 利用者基本情報の処理
+    const userBasicData = {
+      actualName: formData.actualName,
+      disabilityType: formData.disabilityType,
+      disabilitySupportCategory: formData.disabilitySupportCategory,
+      supportServiceNumber: formData.supportServiceNumber,
+      municipalityNumber: formData.municipalityNumber,
+      disabilityWelfareServiceNumber: formData.disabilityWelfareServiceNumber,
+      regionalConsultationSupportNumber: formData.regionalConsultationSupportNumber,
+      consultantName: formData.consultantName,
+      planCreator: formData.planCreator,
+      benefitDecisionDate: formData.benefitDecisionDate ? new Date(formData.benefitDecisionDate) : undefined,
+      interviewFrequency: formData.interviewFrequency as 'weekly' | 'biweekly' | 'monthly' | 'as_needed'
+    }
+
+    let userId: string
     if (editingUser) {
-      updateUser(editingUser.id, formData)
+      updateUser(editingUser.id, userBasicData)
+      userId = editingUser.id
     } else {
-      addUser(formData)
+      userId = addUser(userBasicData)
+    }
+
+    // 面談予定がある場合は面談記録を作成
+    if (formData.nextInterviewDate && formData.nextInterviewTime && formData.nextInterviewEndTime) {
+      const scheduledDate = new Date(`${formData.nextInterviewDate}T${formData.nextInterviewTime}`)
+      const endDate = new Date(`${formData.nextInterviewDate}T${formData.nextInterviewEndTime}`)
+      
+      // 終了時間が開始時間より後かチェック
+      if (endDate > scheduledDate) {
+        addInterview({
+          userId,
+          scheduledDate,
+          endDate,
+          location: formData.interviewLocation || '未設定',
+          purpose: formData.interviewPurpose || '定期面談',
+          status: 'scheduled',
+          participants: [formData.actualName, formData.consultantName].filter(Boolean)
+        })
+      }
     }
 
     resetForm()
@@ -84,7 +141,16 @@ const UserManagement: React.FC = () => {
         disabilityWelfareServiceNumber: fullUser.disabilityWelfareServiceNumber || '',
         regionalConsultationSupportNumber: fullUser.regionalConsultationSupportNumber || '',
         consultantName: fullUser.consultantName,
-        planCreator: fullUser.planCreator
+        planCreator: fullUser.planCreator,
+        // 期限管理関連フィールド
+        benefitDecisionDate: fullUser.benefitDecisionDate ? format(fullUser.benefitDecisionDate, 'yyyy-MM-dd') : '',
+        // 面談関連フィールド（編集時は空にしておく）
+        nextInterviewDate: '',
+        nextInterviewTime: '',
+        nextInterviewEndTime: '',
+        interviewLocation: '',
+        interviewPurpose: '',
+        interviewFrequency: fullUser.interviewFrequency || 'monthly'
       })
       setEditingUser(fullUser)
       setShowForm(true)
@@ -269,6 +335,103 @@ const UserManagement: React.FC = () => {
                 </div>
               </div>
 
+              {/* 期限管理セクション */}
+              <div className="mt-8 border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">期限管理</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="form-group">
+                    <label className="form-label">支給決定日</label>
+                    <input
+                      type="date"
+                      value={formData.benefitDecisionDate}
+                      onChange={(e) => setFormData(prev => ({ ...prev, benefitDecisionDate: e.target.value }))}
+                      className="input-field"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      サービス等利用計画の期限計算に使用されます
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 面談情報セクション */}
+              <div className="mt-8 border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">面談予定</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="form-group">
+                    <label className="form-label">次回面談日</label>
+                    <input
+                      type="date"
+                      value={formData.nextInterviewDate}
+                      onChange={(e) => setFormData(prev => ({ ...prev, nextInterviewDate: e.target.value }))}
+                      className="input-field"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">開始時間</label>
+                    <input
+                      type="time"
+                      value={formData.nextInterviewTime}
+                      onChange={(e) => setFormData(prev => ({ ...prev, nextInterviewTime: e.target.value }))}
+                      className="input-field"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">終了時間</label>
+                    <input
+                      type="time"
+                      value={formData.nextInterviewEndTime}
+                      onChange={(e) => setFormData(prev => ({ ...prev, nextInterviewEndTime: e.target.value }))}
+                      className="input-field"
+                    />
+                  </div>
+
+                  <div className="form-group md:col-span-2">
+                    <label className="form-label">面談場所</label>
+                    <input
+                      type="text"
+                      value={formData.interviewLocation}
+                      onChange={(e) => setFormData(prev => ({ ...prev, interviewLocation: e.target.value }))}
+                      className="input-field"
+                      placeholder="例：事業所、利用者宅、オンライン"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">面談目的</label>
+                    <select
+                      value={formData.interviewPurpose}
+                      onChange={(e) => setFormData(prev => ({ ...prev, interviewPurpose: e.target.value }))}
+                      className="input-field"
+                    >
+                      <option value="">選択してください</option>
+                      <option value="初回面談">初回面談</option>
+                      <option value="定期モニタリング">定期モニタリング</option>
+                      <option value="計画見直し">計画見直し</option>
+                      <option value="緊急対応">緊急対応</option>
+                      <option value="サービス調整">サービス調整</option>
+                      <option value="その他">その他</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">面談頻度</label>
+                    <select
+                      value={formData.interviewFrequency}
+                      onChange={(e) => setFormData(prev => ({ ...prev, interviewFrequency: e.target.value }))}
+                      className="input-field"
+                    >
+                      <option value="weekly">毎週</option>
+                      <option value="biweekly">隔週</option>
+                      <option value="monthly">毎月</option>
+                      <option value="as_needed">必要に応じて</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex justify-end space-x-4 mt-8">
                 <button
                   type="button"
@@ -336,16 +499,9 @@ const UserManagement: React.FC = () => {
                   return (
                     <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-4 px-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                            <span className="text-sm font-medium text-primary-600">
-                              {fullUser?.actualName?.charAt(0) || '?'}
-                            </span>
-                          </div>
-                          <span className="font-medium text-gray-900">
-                            {showActualNames ? (fullUser?.actualName || '名前未設定') : user.anonymizedName}
-                          </span>
-                        </div>
+                        <span className="font-medium text-gray-900">
+                          {showActualNames ? (fullUser?.actualName || '名前未設定') : user.anonymizedName}
+                        </span>
                       </td>
                       <td className="py-4 px-4 text-gray-700">
                         {user.disabilityType || '-'}

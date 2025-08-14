@@ -18,6 +18,8 @@ import {
 } from 'lucide-react'
 import { useUserStore } from '@/stores/userStore'
 import { useDocumentStore } from '@/stores/documentStore'
+import { useDeadlineStore } from '@/stores/deadlineStore'
+import DeadlineManager from './DeadlineManager'
 
 type DocumentType = 'servicePlan' | 'weeklySchedule' | 'needsAssessment'
 
@@ -47,6 +49,8 @@ const DocumentCreate: React.FC = () => {
     updateNeedsAssessment
   } = useDocumentStore()
   
+  const { addDeadline, markDeadlineCompleted, getDeadlineByDocumentId } = useDeadlineStore()
+  
   const [selectedDocType, setSelectedDocType] = useState<DocumentType | null>(null)
   const [interviewText, setInterviewText] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
@@ -67,6 +71,7 @@ const DocumentCreate: React.FC = () => {
       prevUserIdRef.current = userId
     }
   }, [userId])
+
 
   // 週間スケジュール用の最適化されたonChangeハンドラー
   const updateTimeSlot = useCallback((day: string, slotIndex: number, field: string, value: any) => {
@@ -269,6 +274,40 @@ const DocumentCreate: React.FC = () => {
     }
   }
 
+  // 期限設定のハンドラ
+  const handleDeadlineSet = (deadline: any) => {
+    if (!userId || !selectedDocType) return
+    
+    // 既存の文書IDを取得（存在する場合）
+    let existingDocumentId = ''
+    switch (selectedDocType) {
+      case 'servicePlan':
+        const servicePlans = getServicePlansByUserId(userId)
+        existingDocumentId = servicePlans.length > 0 ? servicePlans[servicePlans.length - 1].id : ''
+        break
+      case 'weeklySchedule':
+        const weeklySchedules = getWeeklySchedulesByUserId(userId)
+        existingDocumentId = weeklySchedules.length > 0 ? weeklySchedules[weeklySchedules.length - 1].id : ''
+        break
+      case 'needsAssessment':
+        const needsAssessments = getNeedsAssessmentsByUserId(userId)
+        existingDocumentId = needsAssessments.length > 0 ? needsAssessments[needsAssessments.length - 1].id : ''
+        break
+    }
+    
+    addDeadline({
+      documentId: existingDocumentId || undefined, // 文書IDがある場合は関連付け
+      userId,
+      documentType: selectedDocType,
+      suggestedDeadline: deadline.suggestedDeadline,
+      userSetDeadline: deadline.userSetDeadline,
+      priority: deadline.priority,
+      notes: deadline.notes,
+      reminderDays: deadline.reminderDays,
+      isCompleted: false
+    })
+  }
+
   const handleGenerateDocument = async () => {
     console.log('AI生成ボタンがクリックされました')
     console.log('選択された書類タイプ:', selectedDocType)
@@ -293,6 +332,7 @@ const DocumentCreate: React.FC = () => {
       console.log('generatedContent状態が更新されました')
 
       // 生成された文書をストアに保存
+      let newDocumentId = ''
       switch (selectedDocType) {
         case 'servicePlan':
           // 既存のサービス計画があるかチェック
@@ -302,9 +342,10 @@ const DocumentCreate: React.FC = () => {
             updateServicePlan(existingServicePlans[existingServicePlans.length - 1].id, {
               content: mockContent
             })
+            newDocumentId = existingServicePlans[existingServicePlans.length - 1].id
           } else {
             // 新規作成
-            addServicePlan({
+            newDocumentId = addServicePlan({
               userId: user.id,
               title: `サービス等利用計画 - ${user.actualName}`,
               content: mockContent,
@@ -318,8 +359,9 @@ const DocumentCreate: React.FC = () => {
             updateWeeklySchedule(existingWeeklySchedules[existingWeeklySchedules.length - 1].id, {
               content: mockContent
             })
+            newDocumentId = existingWeeklySchedules[existingWeeklySchedules.length - 1].id
           } else {
-            addWeeklySchedule({
+            newDocumentId = addWeeklySchedule({
               userId: user.id,
               title: `週間計画表 - ${user.actualName}`,
               content: mockContent,
@@ -333,8 +375,9 @@ const DocumentCreate: React.FC = () => {
             updateNeedsAssessment(existingNeedsAssessments[existingNeedsAssessments.length - 1].id, {
               content: mockContent
             })
+            newDocumentId = existingNeedsAssessments[existingNeedsAssessments.length - 1].id
           } else {
-            addNeedsAssessment({
+            newDocumentId = addNeedsAssessment({
               userId: user.id,
               title: `ニーズ整理票 - ${user.actualName}`,
               content: mockContent,
@@ -342,6 +385,21 @@ const DocumentCreate: React.FC = () => {
             })
           }
           break
+      }
+      
+      // 文書IDが取得できた場合、既存の期限と関連付ける
+      if (newDocumentId) {
+        // 該当する利用者・文書タイプで未完了の期限を探して文書IDを更新
+        const { deadlines, updateDeadline } = useDeadlineStore.getState()
+        const relatedDeadline = deadlines.find(deadline => 
+          deadline.userId === user.id && 
+          deadline.documentType === selectedDocType && 
+          !deadline.isCompleted &&
+          !deadline.documentId
+        )
+        if (relatedDeadline) {
+          updateDeadline(relatedDeadline.id, { documentId: newDocumentId })
+        }
       }
 
       // 面談記録を保存
@@ -481,6 +539,7 @@ const DocumentCreate: React.FC = () => {
     console.log('空のテンプレートが生成されました:', emptyTemplate)
     
     // 空のテンプレートをストアに保存
+    let newDocumentId = ''
     if (userId) {
       switch (selectedDocType) {
         case 'servicePlan':
@@ -489,8 +548,9 @@ const DocumentCreate: React.FC = () => {
             updateServicePlan(existingServicePlans[existingServicePlans.length - 1].id, {
               content: emptyTemplate
             })
+            newDocumentId = existingServicePlans[existingServicePlans.length - 1].id
           } else {
-            addServicePlan({
+            newDocumentId = addServicePlan({
               userId: userId,
               title: `サービス等利用計画 - ${user?.actualName}`,
               content: emptyTemplate,
@@ -504,8 +564,9 @@ const DocumentCreate: React.FC = () => {
             updateWeeklySchedule(existingWeeklySchedules[existingWeeklySchedules.length - 1].id, {
               content: emptyTemplate
             })
+            newDocumentId = existingWeeklySchedules[existingWeeklySchedules.length - 1].id
           } else {
-            addWeeklySchedule({
+            newDocumentId = addWeeklySchedule({
               userId: userId,
               title: `週間計画表 - ${user?.actualName}`,
               content: emptyTemplate,
@@ -519,8 +580,9 @@ const DocumentCreate: React.FC = () => {
             updateNeedsAssessment(existingNeedsAssessments[existingNeedsAssessments.length - 1].id, {
               content: emptyTemplate
             })
+            newDocumentId = existingNeedsAssessments[existingNeedsAssessments.length - 1].id
           } else {
-            addNeedsAssessment({
+            newDocumentId = addNeedsAssessment({
               userId: userId,
               title: `ニーズ整理票 - ${user?.actualName}`,
               content: emptyTemplate,
@@ -528,6 +590,21 @@ const DocumentCreate: React.FC = () => {
             })
           }
           break
+      }
+      
+      // 文書IDが取得できた場合、既存の期限と関連付ける
+      if (newDocumentId) {
+        // 該当する利用者・文書タイプで未完了の期限を探して文書IDを更新
+        const { deadlines, updateDeadline } = useDeadlineStore.getState()
+        const relatedDeadline = deadlines.find(deadline => 
+          deadline.userId === userId && 
+          deadline.documentType === selectedDocType && 
+          !deadline.isCompleted &&
+          !deadline.documentId
+        )
+        if (relatedDeadline) {
+          updateDeadline(relatedDeadline.id, { documentId: newDocumentId })
+        }
       }
     }
     
@@ -601,8 +678,50 @@ const DocumentCreate: React.FC = () => {
   }
 
   const exportToExcel = () => {
+    if (!selectedDocType || !generatedContent || !userId) return
+    
     // 実際の実装では、ExcelJSを使用してExcelファイルを生成
     alert('Excel出力機能は準備中です')
+    
+    // Excel出力時も書類完成として期限を完了にマーク
+    let documentId = ''
+    switch (selectedDocType) {
+      case 'servicePlan':
+        const existingServicePlans = getServicePlansByUserId(userId)
+        if (existingServicePlans.length > 0) {
+          updateServicePlan(existingServicePlans[existingServicePlans.length - 1].id, {
+            status: 'completed'  // Excel出力時に完了ステータスに変更
+          })
+          documentId = existingServicePlans[existingServicePlans.length - 1].id
+        }
+        break
+      case 'weeklySchedule':
+        const existingWeeklySchedules = getWeeklySchedulesByUserId(userId)
+        if (existingWeeklySchedules.length > 0) {
+          updateWeeklySchedule(existingWeeklySchedules[existingWeeklySchedules.length - 1].id, {
+            status: 'completed'  // Excel出力時に完了ステータスに変更
+          })
+          documentId = existingWeeklySchedules[existingWeeklySchedules.length - 1].id
+        }
+        break
+      case 'needsAssessment':
+        const existingNeedsAssessments = getNeedsAssessmentsByUserId(userId)
+        if (existingNeedsAssessments.length > 0) {
+          updateNeedsAssessment(existingNeedsAssessments[existingNeedsAssessments.length - 1].id, {
+            status: 'completed'  // Excel出力時に完了ステータスに変更
+          })
+          documentId = existingNeedsAssessments[existingNeedsAssessments.length - 1].id
+        }
+        break
+    }
+    
+    // 関連する期限を完了としてマーク
+    if (documentId) {
+      const deadline = getDeadlineByDocumentId(documentId)
+      if (deadline) {
+        markDeadlineCompleted(deadline.id)
+      }
+    }
   }
 
   const handleCloseDetailedEditor = () => {
@@ -613,19 +732,22 @@ const DocumentCreate: React.FC = () => {
     if (!selectedDocType || !generatedContent || !userId) return
     
     // 詳細編集の保存処理
+    let documentId = ''
     switch (selectedDocType) {
       case 'servicePlan':
         const existingServicePlans = getServicePlansByUserId(userId)
         if (existingServicePlans.length > 0) {
           updateServicePlan(existingServicePlans[existingServicePlans.length - 1].id, {
-            content: generatedContent
+            content: generatedContent,
+            status: 'completed'  // 保存時に完了ステータスに変更
           })
+          documentId = existingServicePlans[existingServicePlans.length - 1].id
         } else {
-          addServicePlan({
+          documentId = addServicePlan({
             userId: userId,
             title: `サービス等利用計画 - ${user?.actualName}`,
             content: generatedContent,
-            status: 'draft'
+            status: 'completed'  // 保存時に完了ステータスに変更
           })
         }
         break
@@ -633,14 +755,16 @@ const DocumentCreate: React.FC = () => {
         const existingWeeklySchedules = getWeeklySchedulesByUserId(userId)
         if (existingWeeklySchedules.length > 0) {
           updateWeeklySchedule(existingWeeklySchedules[existingWeeklySchedules.length - 1].id, {
-            content: generatedContent
+            content: generatedContent,
+            status: 'completed'  // 保存時に完了ステータスに変更
           })
+          documentId = existingWeeklySchedules[existingWeeklySchedules.length - 1].id
         } else {
-          addWeeklySchedule({
+          documentId = addWeeklySchedule({
             userId: userId,
             title: `週間計画表 - ${user?.actualName}`,
             content: generatedContent,
-            status: 'draft'
+            status: 'completed'  // 保存時に完了ステータスに変更
           })
         }
         break
@@ -648,20 +772,30 @@ const DocumentCreate: React.FC = () => {
         const existingNeedsAssessments = getNeedsAssessmentsByUserId(userId)
         if (existingNeedsAssessments.length > 0) {
           updateNeedsAssessment(existingNeedsAssessments[existingNeedsAssessments.length - 1].id, {
-            content: generatedContent
+            content: generatedContent,
+            status: 'completed'  // 保存時に完了ステータスに変更
           })
+          documentId = existingNeedsAssessments[existingNeedsAssessments.length - 1].id
         } else {
-          addNeedsAssessment({
+          documentId = addNeedsAssessment({
             userId: userId,
             title: `ニーズ整理票 - ${user?.actualName}`,
             content: generatedContent,
-            status: 'draft'
+            status: 'completed'  // 保存時に完了ステータスに変更
           })
         }
         break
     }
     
-    alert('編集内容を保存しました')
+    // 関連する期限を完了としてマーク
+    if (documentId) {
+      const deadline = getDeadlineByDocumentId(documentId)
+      if (deadline) {
+        markDeadlineCompleted(deadline.id)
+      }
+    }
+    
+    alert('編集内容を保存しました。関連する期限も完了としてマークされました。')
     setShowDetailedEditor(false)
   }
 
@@ -1460,6 +1594,18 @@ const DocumentCreate: React.FC = () => {
               ))}
             </div>
           </div>
+
+          {/* 期限設定 */}
+          {selectedDocType && userId && (
+            <DeadlineManager
+              documentType={selectedDocType}
+              userId={userId}
+              onDeadlineSet={handleDeadlineSet}
+              benefitDecisionDate={user?.benefitDecisionDate}
+              lastPlanDate={user?.lastPlanDate}
+              lastMonitoringDate={user?.nextMonitoringDate}
+            />
+          )}
 
           {/* 面談記録のアップロード */}
           <div className="card">

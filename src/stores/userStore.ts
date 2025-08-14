@@ -6,7 +6,7 @@ import { User } from '@/types'
 interface UserState {
   users: User[]
   currentUser: User | null
-  addUser: (user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>) => void
+  addUser: (user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>) => string
   updateUser: (id: string, updates: Partial<User>) => void
   deleteUser: (id: string) => void
   setCurrentUser: (user: User | null) => void
@@ -40,10 +40,11 @@ export const useUserStore = create<UserState>()(
         const now = new Date()
         const userCount = get().users.length + 1
         const anonymizedName = `利用者${String.fromCharCode(64 + userCount)}` // A, B, C...
+        const id = crypto.randomUUID()
         
         const newUser: User = {
           ...userData,
-          id: crypto.randomUUID(),
+          id,
           anonymizedName,
           actualName: encryptData(userData.actualName),
           createdAt: now,
@@ -53,6 +54,8 @@ export const useUserStore = create<UserState>()(
         set((state) => ({
           users: [...state.users, newUser]
         }))
+        
+        return id
       },
 
       updateUser: (id, updates) => {
