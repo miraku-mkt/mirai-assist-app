@@ -17,11 +17,13 @@ import { useDocumentStore } from '@/stores/documentStore'
 import { format } from 'date-fns'
 import { ja } from 'date-fns/locale'
 
-const MonitoringManagement: React.FC = () => {
+const PlanManagement: React.FC = () => {
   const navigate = useNavigate()
   const { users, getUserById } = useUserStore()
-  const { monitoringReports } = useDocumentStore()
+  const { servicePlans } = useDocumentStore()
   const [searchTerm, setSearchTerm] = useState('')
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
 
   // 検索フィルタリング（復号化された情報を使用）
   const filteredUsers = users.filter(user => {
@@ -31,32 +33,32 @@ const MonitoringManagement: React.FC = () => {
            decryptedUser.disabilityType.toLowerCase().includes(searchTerm.toLowerCase())
   })
 
-  // 利用者ごとの最新モニタリング報告書を取得
-  const getUserLatestMonitoring = (userId: string) => {
-    const userReports = monitoringReports.filter(report => report.userId === userId)
-    return userReports.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
+  // 利用者ごとの最新計画を取得
+  const getUserLatestPlan = (userId: string) => {
+    const userPlans = servicePlans.filter(plan => plan.userId === userId)
+    return userPlans.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
   }
 
-  // モニタリング報告書の期限切れチェック（3か月）
-  const isMonitoringExpiring = (report: any) => {
-    if (!report) return false
-    const threeMonthsFromCreation = new Date(report.createdAt)
-    threeMonthsFromCreation.setMonth(threeMonthsFromCreation.getMonth() + 3)
+  // 計画の期限切れチェック
+  const isPlanExpiring = (plan: any) => {
+    if (!plan) return false
+    const sixMonthsFromCreation = new Date(plan.createdAt)
+    sixMonthsFromCreation.setMonth(sixMonthsFromCreation.getMonth() + 6)
     const today = new Date()
-    const daysUntilExpiry = Math.ceil((threeMonthsFromCreation.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    const daysUntilExpiry = Math.ceil((sixMonthsFromCreation.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
     return daysUntilExpiry <= 30 && daysUntilExpiry > 0
   }
 
-  const handleCreateMonitoring = (userId: string) => {
-    navigate(`/monitoring/create/${userId}`)
+  const handleCreatePlan = (userId: string) => {
+    navigate(`/plan/create/${userId}`)
   }
 
-  const handleViewMonitoring = (reportId: string) => {
-    navigate(`/monitoring/view/${reportId}`)
+  const handleViewPlan = (planId: string) => {
+    navigate(`/plan/view/${planId}`)
   }
 
-  const handleEditMonitoring = (reportId: string) => {
-    navigate(`/monitoring/edit/${reportId}`)
+  const handleEditPlan = (planId: string) => {
+    navigate(`/plan/edit/${planId}`)
   }
 
   return (
@@ -64,9 +66,9 @@ const MonitoringManagement: React.FC = () => {
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">モニタリング管理</h1>
+          <h1 className="text-2xl font-bold text-gray-900">計画作成</h1>
           <p className="text-gray-600 mt-1">
-            モニタリング報告書の作成・管理を行います
+            サービス等利用計画の作成・管理を行います
           </p>
         </div>
       </div>
@@ -107,9 +109,9 @@ const MonitoringManagement: React.FC = () => {
           <div className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-medium text-green-800">報告書作成済み</h3>
+                <h3 className="text-sm font-medium text-green-800">計画作成済み</h3>
                 <p className="text-2xl font-bold text-green-900">
-                  {users.filter(user => getUserLatestMonitoring(user.id)).length}
+                  {users.filter(user => getUserLatestPlan(user.id)).length}
                 </p>
               </div>
               <FileText className="w-8 h-8 text-green-600" />
@@ -124,8 +126,8 @@ const MonitoringManagement: React.FC = () => {
                 <h3 className="text-sm font-medium text-yellow-800">期限切れ間近</h3>
                 <p className="text-2xl font-bold text-yellow-900">
                   {users.filter(user => {
-                    const report = getUserLatestMonitoring(user.id)
-                    return isMonitoringExpiring(report)
+                    const plan = getUserLatestPlan(user.id)
+                    return isPlanExpiring(plan)
                   }).length}
                 </p>
               </div>
@@ -138,9 +140,9 @@ const MonitoringManagement: React.FC = () => {
           <div className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-medium text-red-800">報告書未作成</h3>
+                <h3 className="text-sm font-medium text-red-800">計画未作成</h3>
                 <p className="text-2xl font-bold text-red-900">
-                  {users.filter(user => !getUserLatestMonitoring(user.id)).length}
+                  {users.filter(user => !getUserLatestPlan(user.id)).length}
                 </p>
               </div>
               <Clock className="w-8 h-8 text-red-600" />
@@ -164,8 +166,8 @@ const MonitoringManagement: React.FC = () => {
             <div className="space-y-3">
               {filteredUsers.map((user) => {
                 const decryptedUser = getUserById(user.id)
-                const latestReport = getUserLatestMonitoring(user.id)
-                const isExpiring = isMonitoringExpiring(latestReport)
+                const latestPlan = getUserLatestPlan(user.id)
+                const isExpiring = isPlanExpiring(latestPlan)
                 
                 if (!decryptedUser) return null
                 
@@ -186,15 +188,15 @@ const MonitoringManagement: React.FC = () => {
                                 期限切れ間近
                               </span>
                             )}
-                            {!latestReport && (
+                            {!latestPlan && (
                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
                                 <Clock className="w-3 h-3 mr-1" />
-                                報告書未作成
+                                計画未作成
                               </span>
                             )}
-                            {latestReport && !isExpiring && (
+                            {latestPlan && !isExpiring && (
                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                ✓ 報告書作成済み
+                                ✓ 計画作成済み
                               </span>
                             )}
                           </div>
@@ -202,9 +204,9 @@ const MonitoringManagement: React.FC = () => {
                           <div className="flex items-center space-x-4 mt-1 text-sm text-gray-600">
                             <span>{decryptedUser.disabilityType}</span>
                             <span>支援区分: {decryptedUser.disabilitySupportCategory}</span>
-                            {latestReport && (
+                            {latestPlan && (
                               <span>
-                                最終作成: {format(latestReport.createdAt, 'yyyy年M月d日', { locale: ja })}
+                                最終作成: {format(latestPlan.createdAt, 'yyyy年M月d日', { locale: ja })}
                               </span>
                             )}
                           </div>
@@ -212,20 +214,20 @@ const MonitoringManagement: React.FC = () => {
                       </div>
 
                       <div className="flex items-center space-x-2">
-                        {latestReport ? (
+                        {latestPlan ? (
                           <>
                             <button
-                              onClick={() => handleViewMonitoring(latestReport.id)}
+                              onClick={() => handleViewPlan(latestPlan.id)}
                               className="btn-secondary flex items-center text-sm"
-                              title="報告書を確認"
+                              title="計画を確認"
                             >
                               <Eye className="w-4 h-4 mr-1" />
                               確認
                             </button>
                             <button
-                              onClick={() => handleEditMonitoring(latestReport.id)}
+                              onClick={() => handleEditPlan(latestPlan.id)}
                               className="btn-secondary flex items-center text-sm"
-                              title="報告書を編集"
+                              title="計画を編集"
                             >
                               <Edit className="w-4 h-4 mr-1" />
                               編集
@@ -234,12 +236,12 @@ const MonitoringManagement: React.FC = () => {
                         ) : null}
                         
                         <button
-                          onClick={() => handleCreateMonitoring(user.id)}
+                          onClick={() => handleCreatePlan(user.id)}
                           className="btn-primary flex items-center text-sm"
-                          title={latestReport ? "新しい報告書を作成" : "報告書を作成"}
+                          title={latestPlan ? "新しい計画を作成" : "計画を作成"}
                         >
                           <Plus className="w-4 h-4 mr-1" />
-                          {latestReport ? "新規作成" : "作成"}
+                          {latestPlan ? "新規作成" : "作成"}
                         </button>
                       </div>
                     </div>
@@ -254,4 +256,4 @@ const MonitoringManagement: React.FC = () => {
   )
 }
 
-export default MonitoringManagement
+export default PlanManagement

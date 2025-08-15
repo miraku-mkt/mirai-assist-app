@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { useUserStore } from '@/stores/userStore'
 import { useDocumentStore } from '@/stores/documentStore'
-import { MonitoringReport, MonitoringItem } from '@/types'
+import { ServicePlan, ServicePlanItem } from '@/types'
 import { format } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { generateDocumentWithAI } from '@/utils/aiPrompts'
@@ -27,29 +27,29 @@ import { generateDocumentWithAI } from '@/utils/aiPrompts'
 type UploadedFile = {
   id: string
   file: File
-  type: 'interview' | 'service_provider' | 'meeting' | 'other'
+  type: 'interview' | 'assessment' | 'medical' | 'other'
   name: string
   content?: string
   status: 'uploading' | 'ready' | 'error'
 }
 
 type FileType = {
-  key: 'interview' | 'service_provider' | 'meeting' | 'other'
+  key: 'interview' | 'assessment' | 'medical' | 'other'
   label: string
   description: string
   required: boolean
 }
 
-const MonitoringCreate: React.FC = () => {
+const PlanCreate: React.FC = () => {
   const { userId } = useParams<{ userId: string }>()
   const navigate = useNavigate()
   const { getUserById } = useUserStore()
-  const { addMonitoringReport } = useDocumentStore()
+  const { addServicePlan } = useDocumentStore()
   
   const [formData, setFormData] = useState({
-    reportDate: format(new Date(), 'yyyy-MM-dd'),
-    monitoringDate: format(new Date(), 'yyyy-MM-dd'),
-    userAgreementName: ''
+    planDate: format(new Date(), 'yyyy-MM-dd'),
+    userAgreementName: '',
+    documentType: 'servicePlan' as 'servicePlan' | 'needsAssessment' | 'weeklySchedule'
   })
   
   // 3ステップ進行管理
@@ -58,10 +58,12 @@ const MonitoringCreate: React.FC = () => {
   // アップロードファイル管理
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
-  const [generatedReport, setGeneratedReport] = useState<{
+  const [generatedPlan, setGeneratedPlan] = useState<{
+    lifeGoals: string
     comprehensiveSupport: string
-    overallStatus: string
-    monitoringItems: Partial<MonitoringItem>[]
+    longTermGoals: string
+    shortTermGoals: string
+    services: Partial<ServicePlanItem>[]
   } | null>(null)
   
   // ファイルタイプ定義
@@ -69,29 +71,28 @@ const MonitoringCreate: React.FC = () => {
     {
       key: 'interview',
       label: '面談記録',
-      description: '利用者との面談記録（振り返り・対話・見通しの内容）',
+      description: '利用者との面談内容（ニーズ、希望、現状の課題等）',
       required: true
     },
     {
-      key: 'service_provider',
-      label: '事業所聞き取り記録',
-      description: 'サービス提供事業所からの聞き取り内容',
+      key: 'assessment',
+      label: 'アセスメント情報',
+      description: '障害状況、ADL、生活環境等の評価情報',
       required: false
     },
     {
-      key: 'meeting',
-      label: 'サービス担当者会議記録',
-      description: '関係者会議の記録や資料',
+      key: 'medical',
+      label: '医療・専門機関情報',
+      description: '医師の意見書、専門機関の評価、検査結果等',
       required: false
     },
     {
       key: 'other',
       label: 'その他関連資料',
-      description: '医療機関の情報、家族からの情報など',
+      description: '家族からの情報、既存サービス利用状況等',
       required: false
     }
   ]
-
 
   const user = userId ? getUserById(userId) : null
 
@@ -167,7 +168,7 @@ const MonitoringCreate: React.FC = () => {
   }
 
   // AI生成処理
-  const handleGenerateReport = async () => {
+  const handleGeneratePlan = async () => {
     if (!hasRequiredFiles()) {
       alert('必須ファイルをアップロードしてください')
       return
@@ -181,13 +182,15 @@ const MonitoringCreate: React.FC = () => {
         .map(f => `【${fileTypes.find(t => t.key === f.type)?.label || f.type}】\n${f.content || f.name}\n`)
         .join('\n')
 
-      // AI生成（希望創出型プロンプトを使用）
-      const result = await generateDocumentWithAI('monitoringReport', allContent, user)
+      // AI生成（選択された書類タイプに応じたプロンプトを使用）
+      const result = await generateDocumentWithAI(formData.documentType, allContent, user)
       
-      setGeneratedReport({
+      setGeneratedPlan({
+        lifeGoals: result.lifeGoals || '',
         comprehensiveSupport: result.comprehensiveSupport || '',
-        overallStatus: result.overallStatus || '',
-        monitoringItems: result.monitoringItems || []
+        longTermGoals: result.longTermGoals || '',
+        shortTermGoals: result.shortTermGoals || '',
+        services: result.services || []
       })
       
       // 生成完了後、ステップ3へ移行
@@ -196,7 +199,7 @@ const MonitoringCreate: React.FC = () => {
       }, 500)
     } catch (error) {
       console.error('AI生成エラー:', error)
-      alert('モニタリング報告書の生成に失敗しました')
+      alert('サービス等利用計画の生成に失敗しました')
     } finally {
       setIsGenerating(false)
     }
@@ -226,8 +229,7 @@ const MonitoringCreate: React.FC = () => {
     if (currentStep === 1) {
       setCurrentStep(2)
     } else if (currentStep === 2) {
-      // AI生成が完了したらステップ3へ
-      if (generatedReport) {
+      if (generatedPlan) {
         setCurrentStep(3)
       }
     }
@@ -239,27 +241,19 @@ const MonitoringCreate: React.FC = () => {
     }
   }
 
-  // AI生成後のステップ3移行
-  const handleGenerateComplete = async () => {
-    await handleGenerateReport()
-    if (generatedReport) {
-      setCurrentStep(3)
-    }
+  // 生成されたプランの編集
+  const updateGeneratedPlan = (field: string, value: any) => {
+    if (!generatedPlan) return
+    setGeneratedPlan(prev => prev ? { ...prev, [field]: value } : null)
   }
 
-  // 生成されたレポートの編集
-  const updateGeneratedReport = (field: string, value: any) => {
-    if (!generatedReport) return
-    setGeneratedReport(prev => prev ? { ...prev, [field]: value } : null)
-  }
-
-  const updateMonitoringItem = (index: number, field: string, value: any) => {
-    if (!generatedReport) return
-    setGeneratedReport(prev => {
+  const updateServiceItem = (index: number, field: string, value: any) => {
+    if (!generatedPlan) return
+    setGeneratedPlan(prev => {
       if (!prev) return null
-      const updatedItems = [...prev.monitoringItems]
-      updatedItems[index] = { ...updatedItems[index], [field]: value }
-      return { ...prev, monitoringItems: updatedItems }
+      const updatedServices = [...prev.services]
+      updatedServices[index] = { ...updatedServices[index], [field]: value }
+      return { ...prev, services: updatedServices }
     })
   }
 
@@ -271,36 +265,37 @@ const MonitoringCreate: React.FC = () => {
       return
     }
 
-    if (!formData.reportDate || !formData.monitoringDate) {
-      alert('報告書作成日とモニタリング実施日は必須です')
+    if (!formData.planDate) {
+      alert('計画作成日は必須です')
       return
     }
 
-    if (!generatedReport) {
+    if (!generatedPlan) {
       alert('まずAI生成を実行してください')
       return
     }
 
-    const reportData = {
+    const planData = {
       userId,
-      reportDate: new Date(formData.reportDate),
-      monitoringDate: new Date(formData.monitoringDate),
+      planDate: new Date(formData.planDate),
       userAgreementName: formData.userAgreementName,
-      comprehensiveSupport: generatedReport.comprehensiveSupport,
-      overallStatus: generatedReport.overallStatus,
-      monitoringItems: generatedReport.monitoringItems.filter(item => 
-        item.supportGoal && item.supportGoal.trim() !== ''
-      ) as MonitoringItem[]
+      lifeGoals: generatedPlan.lifeGoals,
+      comprehensiveSupport: generatedPlan.comprehensiveSupport,
+      longTermGoals: generatedPlan.longTermGoals,
+      shortTermGoals: generatedPlan.shortTermGoals,
+      services: generatedPlan.services.filter(service => 
+        service.supportGoal && service.supportGoal.trim() !== ''
+      ) as ServicePlanItem[]
     }
 
-    addMonitoringReport(reportData)
+    addServicePlan(planData)
     
-    alert('モニタリング報告書が作成されました')
-    navigate('/monitoring')
+    alert('サービス等利用計画が作成されました')
+    navigate('/plan')
   }
 
   const handleBack = () => {
-    navigate('/monitoring')
+    navigate('/plan')
   }
 
   if (!user) {
@@ -328,9 +323,9 @@ const MonitoringCreate: React.FC = () => {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">モニタリング報告書作成</h1>
+            <h1 className="text-2xl font-bold text-gray-900">サービス等利用計画作成</h1>
             <p className="text-gray-600 mt-1">
-              {user.actualName}さんの関連資料をアップロードしてAIが専門的な報告書を生成します
+              {user.actualName}さんの関連資料をアップロードしてAIが専門的な計画書を生成します
             </p>
           </div>
         </div>
@@ -342,8 +337,8 @@ const MonitoringCreate: React.FC = () => {
           <h2 className="text-lg font-semibold text-gray-900 mb-4">作成プロセス</h2>
           <div className="flex items-center justify-between">
             {[
-              { step: 1, title: '基本情報', description: '報告書の基本情報と関連資料', icon: FileText },
-              { step: 2, title: 'AI生成', description: '専門的なモニタリング報告書を自動生成', icon: Bot },
+              { step: 1, title: '基本情報', description: '計画書の基本情報と関連資料', icon: FileText },
+              { step: 2, title: 'AI生成', description: '専門知識を活用した計画書生成', icon: Bot },
               { step: 3, title: '確認・編集', description: '内容確認と必要な修正', icon: CheckCircle }
             ].map((stepInfo, index) => {
               const isActive = stepInfo.step === currentStep
@@ -382,29 +377,32 @@ const MonitoringCreate: React.FC = () => {
               </h2>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="form-group">
-                  <label className="form-label">報告書作成日 <span className="text-red-500">*</span></label>
-                  <input
-                    type="date"
-                    value={formData.reportDate}
-                    onChange={(e) => handleFormChange('reportDate', e.target.value)}
-                    className="input-field"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">モニタリング実施日 <span className="text-red-500">*</span></label>
-                  <input
-                    type="date"
-                    value={formData.monitoringDate}
-                    onChange={(e) => handleFormChange('monitoringDate', e.target.value)}
-                    className="input-field"
-                    required
-                  />
-                </div>
-
                 <div className="form-group md:col-span-2">
+                  <label className="form-label">作成する書類 <span className="text-red-500">*</span></label>
+                  <select
+                    value={formData.documentType}
+                    onChange={(e) => handleFormChange('documentType', e.target.value)}
+                    className="input-field"
+                    required
+                  >
+                    <option value="servicePlan">サービス等利用計画（様式2-1）</option>
+                    <option value="weeklySchedule">週間計画表（様式2-2）</option>
+                    <option value="needsAssessment">ニーズ整理票</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">計画作成日 <span className="text-red-500">*</span></label>
+                  <input
+                    type="date"
+                    value={formData.planDate}
+                    onChange={(e) => handleFormChange('planDate', e.target.value)}
+                    className="input-field"
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
                   <label className="form-label">利用者氏名</label>
                   <input
                     type="text"
@@ -420,7 +418,7 @@ const MonitoringCreate: React.FC = () => {
                 <button
                   type="button"
                   onClick={nextStep}
-                  disabled={!formData.reportDate || !formData.monitoringDate}
+                  disabled={!formData.planDate}
                   className="btn-primary flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   次のステップ：関連資料アップロード
@@ -433,114 +431,114 @@ const MonitoringCreate: React.FC = () => {
 
         {/* ステップ2: AI生成 */}
         {currentStep === 2 && (
-        <div className="card">
-          <div className="p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <Bot className="w-5 h-5 mr-2" />
-              ステップ2: AI生成
-            </h2>
-            <p className="text-sm text-gray-600 mb-6">
-              以下の資料をアップロードしてください。AIが専門的な知識に基づいてモニタリング報告書を生成します。
-            </p>
-            
-            <div className="space-y-6">
-              {fileTypes.map((fileType) => (
-                <div key={fileType.key} className="border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h3 className="font-medium text-gray-900 flex items-center">
-                        {fileType.label}
-                        {fileType.required && <span className="text-red-500 ml-1">*</span>}
-                      </h3>
-                      <p className="text-sm text-gray-600">{fileType.description}</p>
+          <div className="card">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Bot className="w-5 h-5 mr-2" />
+                ステップ2: AI生成
+              </h2>
+              <p className="text-sm text-gray-600 mb-6">
+                以下の資料をアップロードしてください。AIが専門知識を活用してサービス等利用計画を生成します。
+              </p>
+              
+              <div className="space-y-6">
+                {fileTypes.map((fileType) => (
+                  <div key={fileType.key} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h3 className="font-medium text-gray-900 flex items-center">
+                          {fileType.label}
+                          {fileType.required && <span className="text-red-500 ml-1">*</span>}
+                        </h3>
+                        <p className="text-sm text-gray-600">{fileType.description}</p>
+                      </div>
+                      <div>
+                        <input
+                          type="file"
+                          id={`file-${fileType.key}`}
+                          multiple
+                          accept=".txt,.doc,.docx,.pdf,.jpg,.jpeg,.png"
+                          onChange={(e) => handleFileUpload(e.target.files, fileType.key)}
+                          className="hidden"
+                        />
+                        <label
+                          htmlFor={`file-${fileType.key}`}
+                          className="btn-secondary flex items-center cursor-pointer"
+                        >
+                          <Upload className="w-4 h-4 mr-2" />
+                          ファイル選択
+                        </label>
+                      </div>
                     </div>
-                    <div>
-                      <input
-                        type="file"
-                        id={`file-${fileType.key}`}
-                        multiple
-                        accept=".txt,.doc,.docx,.pdf,.jpg,.jpeg,.png"
-                        onChange={(e) => handleFileUpload(e.target.files, fileType.key)}
-                        className="hidden"
-                      />
-                      <label
-                        htmlFor={`file-${fileType.key}`}
-                        className="btn-secondary flex items-center cursor-pointer"
-                      >
-                        <Upload className="w-4 h-4 mr-2" />
-                        ファイル選択
-                      </label>
+                    
+                    {/* アップロードされたファイル一覧 */}
+                    <div className="space-y-2">
+                      {getFilesByType(fileType.key).map((file) => (
+                        <div key={file.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                          <div className="flex items-center space-x-2">
+                            {getFileStatusIcon(file.status)}
+                            <span className="text-sm text-gray-700">{file.name}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeFile(file.id)}
+                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* AI生成ボタン */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={previousStep}
+                    className="btn-secondary flex items-center"
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    前のステップ
+                  </button>
+                  
+                  <div className="text-center">
+                    {hasRequiredFiles() ? (
+                      <p className="text-sm text-green-600 mb-2">✓ 必須ファイルのアップロード完了</p>
+                    ) : (
+                      <p className="text-sm text-gray-600 mb-2">必須ファイルをアップロードしてください</p>
+                    )}
                   </div>
                   
-                  {/* アップロードされたファイル一覧 */}
-                  <div className="space-y-2">
-                    {getFilesByType(fileType.key).map((file) => (
-                      <div key={file.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                        <div className="flex items-center space-x-2">
-                          {getFileStatusIcon(file.status)}
-                          <span className="text-sm text-gray-700">{file.name}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeFile(file.id)}
-                          className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGeneratePlan}
+                    disabled={!hasRequiredFiles() || isGenerating}
+                    className="btn-primary flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader className="w-4 h-4 mr-2 animate-spin" />
+                        AI生成中...
+                      </>
+                    ) : (
+                      <>
+                        <Bot className="w-4 h-4 mr-2" />
+                        AI生成して次のステップへ
+                      </>
+                    )}
+                  </button>
                 </div>
-              ))}
-            </div>
-
-            {/* AI生成ボタン */}
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={previousStep}
-                  className="btn-secondary flex items-center"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  前のステップ
-                </button>
-                
-                <div className="text-center">
-                  {hasRequiredFiles() ? (
-                    <p className="text-sm text-green-600 mb-2">✓ 必須ファイルのアップロード完了</p>
-                  ) : (
-                    <p className="text-sm text-gray-600 mb-2">必須ファイルをアップロードしてください</p>
-                  )}
-                </div>
-                
-                <button
-                  type="button"
-                  onClick={handleGenerateReport}
-                  disabled={!hasRequiredFiles() || isGenerating}
-                  className="btn-primary flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader className="w-4 h-4 mr-2 animate-spin" />
-                      AI生成中...
-                    </>
-                  ) : (
-                    <>
-                      <Bot className="w-4 h-4 mr-2" />
-                      AI生成して次のステップへ
-                    </>
-                  )}
-                </button>
               </div>
             </div>
           </div>
-        </div>
         )}
 
         {/* ステップ3: 確認・編集 */}
-        {currentStep === 3 && generatedReport && (
+        {currentStep === 3 && generatedPlan && (
           <div className="card">
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -549,46 +547,67 @@ const MonitoringCreate: React.FC = () => {
               </h2>
               <div className="bg-green-50 p-4 rounded-lg mb-6">
                 <p className="text-green-800 text-sm">
-                  ✅ AIが専門的な知識に基づいてモニタリング報告書を生成しました。内容を確認し、必要に応じて修正してください。手動での詳細な編集も可能です。
+                  ✅ AIが専門知識を活用してサービス等利用計画を生成しました。内容を確認し、必要に応じて修正してください。
                 </p>
               </div>
               
               <div className="space-y-6">
                 <div className="form-group">
-                  <label className="form-label">総合的な援助の方針</label>
+                  <label className="form-label">利用者及びその家族の生活に対する意向</label>
                   <textarea
-                    value={generatedReport.comprehensiveSupport}
-                    onChange={(e) => updateGeneratedReport('comprehensiveSupport', e.target.value)}
+                    value={generatedPlan.lifeGoals}
+                    onChange={(e) => updateGeneratedPlan('lifeGoals', e.target.value)}
                     className="input-field"
                     rows={4}
                   />
                 </div>
                 
                 <div className="form-group">
-                  <label className="form-label">全体の状況</label>
+                  <label className="form-label">総合的な援助の方針</label>
                   <textarea
-                    value={generatedReport.overallStatus}
-                    onChange={(e) => updateGeneratedReport('overallStatus', e.target.value)}
+                    value={generatedPlan.comprehensiveSupport}
+                    onChange={(e) => updateGeneratedPlan('comprehensiveSupport', e.target.value)}
                     className="input-field"
                     rows={4}
                   />
                 </div>
 
-                {/* モニタリング項目 */}
+                <div className="form-group">
+                  <label className="form-label">長期目標</label>
+                  <textarea
+                    value={generatedPlan.longTermGoals}
+                    onChange={(e) => updateGeneratedPlan('longTermGoals', e.target.value)}
+                    className="input-field"
+                    rows={3}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">短期目標</label>
+                  <textarea
+                    value={generatedPlan.shortTermGoals}
+                    onChange={(e) => updateGeneratedPlan('shortTermGoals', e.target.value)}
+                    className="input-field"
+                    rows={3}
+                  />
+                </div>
+
+                {/* サービス項目 */}
                 <div>
-                  <h3 className="font-medium text-gray-900 mb-4">モニタリング項目</h3>
+                  <h3 className="font-medium text-gray-900 mb-4">福祉サービス等</h3>
                   <div className="space-y-4">
-                    {generatedReport.monitoringItems.map((item, index) => (
+                    {generatedPlan.services.map((service, index) => (
                       <div key={index} className="border border-gray-200 rounded-lg p-4">
-                        <h4 className="font-medium text-gray-900 mb-3">項目 {index + 1}</h4>
+                        <h4 className="font-medium text-gray-900 mb-3">サービス {index + 1}</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="form-group">
-                            <label className="form-label">支援目標</label>
+                            <label className="form-label">優先順位</label>
                             <input
-                              type="text"
-                              value={item.supportGoal || ''}
-                              onChange={(e) => updateMonitoringItem(index, 'supportGoal', e.target.value)}
+                              type="number"
+                              value={service.priority || ''}
+                              onChange={(e) => updateServiceItem(index, 'priority', parseInt(e.target.value))}
                               className="input-field"
+                              min="1"
                             />
                           </div>
 
@@ -596,47 +615,67 @@ const MonitoringCreate: React.FC = () => {
                             <label className="form-label">達成時期</label>
                             <input
                               type="text"
-                              value={item.completionPeriod || ''}
-                              onChange={(e) => updateMonitoringItem(index, 'completionPeriod', e.target.value)}
+                              value={service.completionPeriod || ''}
+                              onChange={(e) => updateServiceItem(index, 'completionPeriod', e.target.value)}
                               className="input-field"
                             />
                           </div>
 
                           <div className="form-group md:col-span-2">
-                            <label className="form-label">サービス提供状況</label>
+                            <label className="form-label">解決すべき課題</label>
                             <textarea
-                              value={item.serviceStatus || ''}
-                              onChange={(e) => updateMonitoringItem(index, 'serviceStatus', e.target.value)}
-                              className="input-field"
-                              rows={2}
-                            />
-                          </div>
-
-                          <div className="form-group md:col-span-2">
-                            <label className="form-label">本人の感想・満足度</label>
-                            <textarea
-                              value={item.userSatisfaction || ''}
-                              onChange={(e) => updateMonitoringItem(index, 'userSatisfaction', e.target.value)}
+                              value={service.issueToSolve || ''}
+                              onChange={(e) => updateServiceItem(index, 'issueToSolve', e.target.value)}
                               className="input-field"
                               rows={2}
                             />
                           </div>
 
                           <div className="form-group md:col-span-2">
-                            <label className="form-label">支援目標の達成度</label>
+                            <label className="form-label">支援目標</label>
                             <textarea
-                              value={item.goalAchievement || ''}
-                              onChange={(e) => updateMonitoringItem(index, 'goalAchievement', e.target.value)}
+                              value={service.supportGoal || ''}
+                              onChange={(e) => updateServiceItem(index, 'supportGoal', e.target.value)}
                               className="input-field"
                               rows={2}
                             />
                           </div>
 
                           <div className="form-group md:col-span-2">
-                            <label className="form-label">今後の課題・解決方法</label>
+                            <label className="form-label">福祉サービス等の種類・内容・量</label>
                             <textarea
-                              value={item.currentIssues || ''}
-                              onChange={(e) => updateMonitoringItem(index, 'currentIssues', e.target.value)}
+                              value={service.serviceDetails || ''}
+                              onChange={(e) => updateServiceItem(index, 'serviceDetails', e.target.value)}
+                              className="input-field"
+                              rows={2}
+                            />
+                          </div>
+
+                          <div className="form-group">
+                            <label className="form-label">提供事業所名</label>
+                            <input
+                              type="text"
+                              value={service.providerName || ''}
+                              onChange={(e) => updateServiceItem(index, 'providerName', e.target.value)}
+                              className="input-field"
+                            />
+                          </div>
+
+                          <div className="form-group">
+                            <label className="form-label">評価時期</label>
+                            <input
+                              type="text"
+                              value={service.evaluationPeriod || ''}
+                              onChange={(e) => updateServiceItem(index, 'evaluationPeriod', e.target.value)}
+                              className="input-field"
+                            />
+                          </div>
+
+                          <div className="form-group md:col-span-2">
+                            <label className="form-label">本人の役割</label>
+                            <textarea
+                              value={service.userRole || ''}
+                              onChange={(e) => updateServiceItem(index, 'userRole', e.target.value)}
                               className="input-field"
                               rows={2}
                             />
@@ -645,8 +684,8 @@ const MonitoringCreate: React.FC = () => {
                           <div className="form-group md:col-span-2">
                             <label className="form-label">その他留意事項</label>
                             <textarea
-                              value={item.otherNotes || ''}
-                              onChange={(e) => updateMonitoringItem(index, 'otherNotes', e.target.value)}
+                              value={service.otherNotes || ''}
+                              onChange={(e) => updateServiceItem(index, 'otherNotes', e.target.value)}
                               className="input-field"
                               rows={2}
                             />
@@ -683,11 +722,11 @@ const MonitoringCreate: React.FC = () => {
               </button>
               <button
                 type="submit"
-                disabled={!generatedReport}
+                disabled={!generatedPlan}
                 className="btn-primary flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4 mr-2" />
-                モニタリング報告書を保存
+                サービス等利用計画を保存
               </button>
             </div>
           </div>
@@ -697,4 +736,4 @@ const MonitoringCreate: React.FC = () => {
   )
 }
 
-export default MonitoringCreate
+export default PlanCreate

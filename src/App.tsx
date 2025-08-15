@@ -8,6 +8,9 @@ import DocumentCreate from '@/components/documents/DocumentCreate'
 import MonitoringManagement from '@/components/monitoring/MonitoringManagement'
 import MonitoringCreate from '@/components/monitoring/MonitoringCreate'
 import MonitoringView from '@/components/monitoring/MonitoringView'
+import PlanManagement from '@/components/plan/PlanManagement'
+import PlanCreate from '@/components/plan/PlanCreate'
+import PlanView from '@/components/plan/PlanView'
 import InterviewCalendar from '@/components/calendar/InterviewCalendar'
 import Layout from '@/components/layout/Layout'
 
@@ -35,6 +38,10 @@ const App: React.FC = () => {
           <Route path="/" element={<Dashboard />} />
           <Route path="/users" element={<UserManagement />} />
           <Route path="/documents/:userId" element={<DocumentCreate />} />
+          <Route path="/plan" element={<PlanManagement />} />
+          <Route path="/plan/create/:userId" element={<PlanCreate />} />
+          <Route path="/plan/view/:planId" element={<PlanView />} />
+          <Route path="/plan/edit/:planId" element={<PlanCreate />} />
           <Route path="/monitoring" element={<MonitoringManagement />} />
           <Route path="/monitoring/create/:userId" element={<MonitoringCreate />} />
           <Route path="/monitoring/view/:userId" element={<MonitoringView />} />

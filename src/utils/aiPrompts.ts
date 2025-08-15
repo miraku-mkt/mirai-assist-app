@@ -543,6 +543,24 @@ const generateMockResponse = (documentType: string, userInfo: any) => {
         personSummary: `${userInfo.actualName}さんは向上心があり、支援者との信頼関係を築くことができる方です。自分のペースで着実に成長していく力を持っており、適切な環境と段階的な支援により、社会参加と自立に向けた歩みを進めることが期待されます。`
       }
 
+    case 'monitoringReport':
+      return {
+        comprehensiveSupport: `${userInfo.actualName}さんとの信頼関係は良好に築けており、ご本人の希望に寄り添った支援を継続しています。これまでの取り組みを通じて、${userInfo.actualName}さんの強みや可能性が明確になってきており、今後もその力を活かした支援を展開していきます。`,
+        overallStatus: `${userInfo.actualName}さんの表情が明るくなり、「最近は楽しいことが増えました」とお話しされています。サービス利用を通じて生活リズムが安定し、対人関係においても積極性が見られるようになりました。ご家族からも「前向きな変化を感じる」との評価をいただいています。`,
+        monitoringItems: [
+          {
+            priority: 1,
+            supportGoal: '生活リズムの安定と健康管理',
+            completionPeriod: '3か月',
+            serviceStatus: 'スタッフとの関係性は良好で、毎回笑顔で通所されています。活動への参加意欲も高く、他の利用者との交流も積極的に行われています。',
+            userSatisfaction: '「毎日通うのが楽しみです。みんなと一緒にいると気持ちが明るくなります」とお話しされ、サービス利用に対する満足度の高さが伺えます。',
+            goalAchievement: '目標としていた規則正しい生活リズムはほぼ確立され、体調管理も安定しています。小さな変化の積み重ねにより、着実な成長を実感されています。',
+            currentIssues: '今後は「もっと色々なことに挑戦してみたい」という新しい希望が生まれており、より充実した活動プログラムの検討が必要です。',
+            otherNotes: `${userInfo.actualName}さんの新しい一面として、リーダーシップを発揮する場面が見られるようになりました。今後の可能性に大きな期待が持てます。`
+          }
+        ]
+      }
+
     default:
       return null
   }

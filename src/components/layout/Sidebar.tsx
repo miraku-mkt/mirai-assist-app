@@ -7,7 +7,8 @@ import {
   Calendar, 
   ClipboardCheck, 
   BarChart3,
-  UserPlus
+  UserPlus,
+  PlusCircle
 } from 'lucide-react'
 import { useUserStore } from '@/stores/userStore'
 
@@ -35,6 +36,12 @@ const Sidebar: React.FC = () => {
       icon: Calendar,
       label: '面談カレンダー',
       description: '面談予定の確認・管理'
+    },
+    {
+      to: '/plan',
+      icon: PlusCircle,
+      label: '計画作成',
+      description: 'サービス等利用計画の作成・管理'
     },
     {
       to: '/monitoring',

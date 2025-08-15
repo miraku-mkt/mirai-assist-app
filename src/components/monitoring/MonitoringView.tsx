@@ -7,13 +7,17 @@ import {
   User,
   CheckSquare,
   Plus,
-  Eye
+  Eye,
+  FileSpreadsheet,
+  Download,
+  Edit
 } from 'lucide-react'
 import { useUserStore } from '@/stores/userStore'
 import { useDocumentStore } from '@/stores/documentStore'
 import { MonitoringReport } from '@/types'
 import { format } from 'date-fns'
 import { ja } from 'date-fns/locale'
+import { exportMonitoringReportToExcel } from '@/utils/excelExport'
 
 const MonitoringView: React.FC = () => {
   const { userId } = useParams<{ userId: string }>()
@@ -47,6 +51,11 @@ const MonitoringView: React.FC = () => {
 
   const handleCloseDetail = () => {
     setSelectedReport(null)
+  }
+
+  const handleExcelExport = (report: MonitoringReport) => {
+    if (!user) return
+    exportMonitoringReportToExcel(report, report.userAgreementName, user)
   }
 
   if (!user) {
@@ -289,6 +298,13 @@ const MonitoringView: React.FC = () => {
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => handleExcelExport(report)}
+                          className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
+                          title="Excel出力"
+                        >
+                          <FileSpreadsheet size={16} />
+                        </button>
                         <button
                           onClick={() => handleViewReport(report)}
                           className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
