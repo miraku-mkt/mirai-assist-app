@@ -427,25 +427,60 @@ ${interviewText}
   }
 }
 
-// AI APIを呼び出す関数（実装時にはOllamaやローカルLLMに接続）
+// AI APIを呼び出す関数（ELYZA 7B instruct統合）
 export const generateDocumentWithAI = async (
   documentType: keyof typeof AI_PROMPTS,
   interviewText: string,
   userInfo: any
 ): Promise<any> => {
-  const prompt = AI_PROMPTS[documentType]
-  
-  // 実際の実装では、ここでローカルAI（Ollamaなど）を呼び出す
-  // 現在はモック実装
-  console.log('AI生成中...', {
-    systemPrompt: prompt.systemPrompt,
-    userPrompt: prompt.userPrompt(interviewText, userInfo)
-  })
+  try {
+    // LLMClientを動的インポート（サーバーサイドでのみ実行）
+    const { llmClient } = await import('../services/llmClient')
+    
+    const prompt = AI_PROMPTS[documentType]
+    const systemPrompt = prompt.systemPrompt
+    const userPrompt = prompt.userPrompt(interviewText, userInfo)
+    
+    console.log('ELYZA 7B instructで生成中...', {
+      documentType,
+      userInfo: userInfo.actualName,
+      textLength: interviewText.length
+    })
 
-  // モック応答（実際の実装では削除）
-  await new Promise(resolve => setTimeout(resolve, 2000))
-  
-  return generateMockResponse(documentType, userInfo)
+    // ELYZA 7B instructで生成
+    const generatedText = await llmClient.generateDocumentDraft(
+      documentType,
+      { documentType, userInfo },
+      { interviewText, userInfo }
+    )
+
+    // 生成されたテキストをJSONパースして返す
+    try {
+      // JSONの開始と終了を探す
+      const jsonStart = generatedText.indexOf('{')
+      const jsonEnd = generatedText.lastIndexOf('}') + 1
+      
+      if (jsonStart !== -1 && jsonEnd > jsonStart) {
+        const jsonText = generatedText.substring(jsonStart, jsonEnd)
+        const parsed = JSON.parse(jsonText)
+        console.log('AI生成成功:', Object.keys(parsed))
+        return parsed
+      } else {
+        console.warn('JSONが見つからないため、モック応答を使用')
+        return generateMockResponse(documentType, userInfo)
+      }
+    } catch (parseError) {
+      console.warn('JSON解析エラー、モック応答を使用:', parseError)
+      return generateMockResponse(documentType, userInfo)
+    }
+  } catch (error) {
+    console.error('AI生成エラー:', error)
+    console.log('モック応答にフォールバック')
+    
+    // エラー時はモック応答を返す
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    return generateMockResponse(documentType, userInfo)
+  }
 }
 
 // モック応答生成（実際の実装では不要）

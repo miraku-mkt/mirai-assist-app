@@ -1,14 +1,9 @@
 import React from 'react'
-import { LogOut, Settings, User } from 'lucide-react'
+import { LogOut, Settings } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
-import { useUserStore } from '@/stores/userStore'
 
 const Header: React.FC = () => {
   const { logout } = useAuthStore()
-  const { currentUser, getUserById } = useUserStore()
-  
-  // 現在のユーザーの復号化された情報を取得
-  const decryptedUser = currentUser ? getUserById(currentUser.id) : null
 
   const handleLogout = () => {
     if (confirm('ログアウトしますか？')) {
@@ -23,12 +18,6 @@ const Header: React.FC = () => {
           <h1 className="text-xl font-semibold text-gray-900">
             ミライアシスト
           </h1>
-          {currentUser && (
-            <div className="flex items-center space-x-2 text-sm text-gray-600">
-              <User size={16} />
-              <span>現在の利用者: {decryptedUser?.actualName || '利用者'}さん</span>
-            </div>
-          )}
         </div>
 
         <div className="flex items-center space-x-4">

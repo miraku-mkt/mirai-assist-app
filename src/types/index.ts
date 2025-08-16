@@ -31,8 +31,9 @@ export interface ServicePlan {
   id: string
   userId: string
   planDate: Date
-  monitoringPeriod: string
+  monitoringPeriod?: string
   userAgreementName: string
+  documentType?: 'servicePlan' | 'weeklySchedule' | 'needsAssessment' // 書類タイプを追加
   lifeGoals: string // 利用者及びその家族の生活に対する意向
   comprehensiveSupport: string // 総合的な援助の方針
   longTermGoals: string // 長期目標
@@ -44,17 +45,20 @@ export interface ServicePlan {
 
 // サービス詳細の型定義
 export interface ServiceDetail {
-  priority: number
-  issueToSolve: string // 解決すべき課題（本人のニーズ）
-  supportGoal: string // 支援目標
-  completionPeriod: string // 達成時期
-  serviceType: string // 福祉サービス等
-  serviceDetails: string // 種類・内容・量・頻度・時間
-  providerName: string // 提供事業所名（担当者名・電話）
-  userRole: string // 課題解決のための本人の役割
-  evaluationPeriod: string // 評価時期
-  otherNotes: string // その他留意事項
+  priority?: number
+  issueToSolve?: string // 解決すべき課題（本人のニーズ）
+  supportGoal?: string // 支援目標
+  completionPeriod?: string // 達成時期
+  serviceType?: string // 福祉サービス等
+  serviceDetails?: string // 種類・内容・量・頻度・時間
+  providerName?: string // 提供事業所名（担当者名・電話）
+  userRole?: string // 課題解決のための本人の役割
+  evaluationPeriod?: string // 評価時期
+  otherNotes?: string // その他留意事項
 }
+
+// ServicePlanItemエイリアスを追加（互換性のため）
+export type ServicePlanItem = ServiceDetail
 
 // 週間計画表の型定義
 export interface WeeklySchedule {

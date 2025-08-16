@@ -318,17 +318,16 @@ const DocumentCreate: React.FC = () => {
       return
     }
 
-    console.log('AI生成を開始します...')
+    console.log('ELYZA 7B instructで生成を開始します...')
     setIsGenerating(true)
 
     try {
-      // 実際の実装では、ここでAI APIを呼び出す
-      // 現在は、モックデータを生成
-      await new Promise(resolve => setTimeout(resolve, 2000)) // 2秒待機
-
-      const mockContent = generateMockContent(selectedDocType, user)
-      console.log('生成されたコンテンツ:', mockContent)
-      setGeneratedContent(mockContent)
+      // ELYZA 7B instructを使用してAI生成
+      const { generateDocumentWithAI } = await import('@/utils/aiPrompts')
+      const aiContent = await generateDocumentWithAI(selectedDocType, interviewText, user)
+      
+      console.log('生成されたコンテンツ:', aiContent)
+      setGeneratedContent(aiContent)
       console.log('generatedContent状態が更新されました')
 
       // 生成された文書をストアに保存
@@ -340,7 +339,7 @@ const DocumentCreate: React.FC = () => {
           if (existingServicePlans.length > 0) {
             // 更新
             updateServicePlan(existingServicePlans[existingServicePlans.length - 1].id, {
-              content: mockContent
+              content: aiContent
             })
             newDocumentId = existingServicePlans[existingServicePlans.length - 1].id
           } else {
@@ -348,7 +347,7 @@ const DocumentCreate: React.FC = () => {
             newDocumentId = addServicePlan({
               userId: user.id,
               title: `サービス等利用計画 - ${user.actualName}`,
-              content: mockContent,
+              content: aiContent,
               status: 'draft'
             })
           }
@@ -357,14 +356,14 @@ const DocumentCreate: React.FC = () => {
           const existingWeeklySchedules = getWeeklySchedulesByUserId(user.id)
           if (existingWeeklySchedules.length > 0) {
             updateWeeklySchedule(existingWeeklySchedules[existingWeeklySchedules.length - 1].id, {
-              content: mockContent
+              content: aiContent
             })
             newDocumentId = existingWeeklySchedules[existingWeeklySchedules.length - 1].id
           } else {
             newDocumentId = addWeeklySchedule({
               userId: user.id,
               title: `週間計画表 - ${user.actualName}`,
-              content: mockContent,
+              content: aiContent,
               status: 'draft'
             })
           }
@@ -373,14 +372,14 @@ const DocumentCreate: React.FC = () => {
           const existingNeedsAssessments = getNeedsAssessmentsByUserId(user.id)
           if (existingNeedsAssessments.length > 0) {
             updateNeedsAssessment(existingNeedsAssessments[existingNeedsAssessments.length - 1].id, {
-              content: mockContent
+              content: aiContent
             })
             newDocumentId = existingNeedsAssessments[existingNeedsAssessments.length - 1].id
           } else {
             newDocumentId = addNeedsAssessment({
               userId: user.id,
               title: `ニーズ整理票 - ${user.actualName}`,
-              content: mockContent,
+              content: aiContent,
               status: 'draft'
             })
           }

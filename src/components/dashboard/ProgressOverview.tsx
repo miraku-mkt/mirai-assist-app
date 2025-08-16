@@ -35,7 +35,7 @@ interface UserProgressSummary {
 
 const ProgressOverview: React.FC = () => {
   const navigate = useNavigate()
-  const { users, getUserById, setCurrentUser } = useUserStore()
+  const { users, getUserById } = useUserStore()
   const { servicePlans, weeklySchedules, needsAssessments, monitoringReports } = useDocumentStore()
   
   const today = startOfToday()
@@ -212,8 +212,7 @@ const ProgressOverview: React.FC = () => {
   const handleUserClick = (userId: string) => {
     const user = getUserById(userId)
     if (user) {
-      setCurrentUser(user)
-      navigate(`/documents/${userId}`)
+      navigate('/plan')
     }
   }
 

@@ -23,10 +23,35 @@ const PlanView: React.FC = () => {
   const { planId } = useParams<{ planId: string }>()
   const navigate = useNavigate()
   const { getUserById } = useUserStore()
-  const { getServicePlanById } = useDocumentStore()
+  const { getDocumentById } = useDocumentStore()
 
-  const plan = planId ? getServicePlanById(planId) : null
-  const user = plan ? getUserById(plan.userId) : null
+  const document = planId ? getDocumentById(planId) : null
+  const user = document ? getUserById(document.userId) : null
+  
+  // 書類タイプを取得（文書の種類から判定）
+  const documentType = (() => {
+    if (!document) return 'servicePlan'
+    
+    // ServicePlan type check
+    if ('services' in document && 'lifeGoals' in document && 'comprehensiveSupport' in document) {
+      return (document as any)?.documentType || 'servicePlan'
+    }
+    
+    // WeeklySchedule type check
+    if ('schedule' in document && 'weeklyServices' in document) {
+      return 'weeklySchedule'
+    }
+    
+    // NeedsAssessment type check
+    if ('intake' in document && 'assessment' in document && 'planning' in document) {
+      return 'needsAssessment'
+    }
+    
+    return 'servicePlan' // fallback
+  })()
+  
+  // Convert document to plan format for compatibility
+  const plan = document as ServicePlan
 
   const handleBack = () => {
     navigate('/plan')
@@ -41,29 +66,36 @@ const PlanView: React.FC = () => {
   const handleDownload = () => {
     if (!plan || !user) return
     
-    // 簡易的なテキスト形式でダウンロード
-    const content = `
+    // 書類タイプ別のコンテンツ生成
+    const getUserName = () => {
+      return (plan as any).userAgreementName || user.actualName || '名前不明'
+    }
+    
+    let content = ''
+    
+    if (documentType === 'servicePlan') {
+      content = `
 サービス等利用計画（様式2-1）
 
 作成日: ${format(plan.createdAt, 'yyyy年M月d日', { locale: ja })}
-利用者氏名: ${plan.userAgreementName}
+利用者氏名: ${getUserName()}
 障害種別: ${user.disabilityType}
 障害支援区分: ${user.disabilitySupportCategory}
 
 【利用者及びその家族の生活に対する意向】
-${plan.lifeGoals}
+${plan.lifeGoals || ''}
 
 【総合的な援助の方針】
-${plan.comprehensiveSupport}
+${plan.comprehensiveSupport || ''}
 
 【長期目標】
-${plan.longTermGoals}
+${plan.longTermGoals || ''}
 
 【短期目標】
-${plan.shortTermGoals}
+${plan.shortTermGoals || ''}
 
 【福祉サービス等】
-${plan.services.map((service, index) => `
+${plan.services?.map((service, index) => `
 ${index + 1}. 優先順位: ${service.priority}
    解決すべき課題: ${service.issueToSolve}
    支援目標: ${service.supportGoal}
@@ -73,14 +105,41 @@ ${index + 1}. 優先順位: ${service.priority}
    本人の役割: ${service.userRole}
    評価時期: ${service.evaluationPeriod}
    その他留意事項: ${service.otherNotes}
-`).join('\n')}
-    `.trim()
+`).join('\n') || ''}
+      `.trim()
+    } else if (documentType === 'weeklySchedule') {
+      content = `
+週間計画表
+
+作成日: ${format(plan.createdAt, 'yyyy年M月d日', { locale: ja })}
+利用者氏名: ${getUserName()}
+障害種別: ${user.disabilityType}
+障害支援区分: ${user.disabilitySupportCategory}
+
+【基本的生活パターン】
+${plan.lifeGoals || ''}
+      `.trim()
+    } else if (documentType === 'needsAssessment') {
+      content = `
+ニーズ整理票
+
+作成日: ${format(plan.createdAt, 'yyyy年M月d日', { locale: ja })}
+利用者氏名: ${getUserName()}
+障害種別: ${user.disabilityType}
+障害支援区分: ${user.disabilitySupportCategory}
+
+【生活全般の状況とニーズ】
+${plan.lifeGoals || ''}
+      `.trim()
+    }
 
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `サービス等利用計画_${plan.userAgreementName}_${format(plan.createdAt, 'yyyyMMdd', { locale: ja })}.txt`
+    const docTypeLabel = documentType === 'servicePlan' ? 'サービス等利用計画' : 
+                        documentType === 'weeklySchedule' ? '週間計画表' : 'ニーズ整理票'
+    link.download = `${docTypeLabel}_${getUserName()}_${format(plan.createdAt, 'yyyyMMdd', { locale: ja })}.txt`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -89,7 +148,13 @@ ${index + 1}. 優先順位: ${service.priority}
 
   const handleExcelExport = () => {
     if (!plan || !user) return
-    exportServicePlanToExcel(plan, plan.userAgreementName, user)
+    const userName = (plan as any).userAgreementName || user.actualName || '名前不明'
+    exportServicePlanToExcel(plan, userName, user)
+  }
+  
+  // ユーザー名を安全に取得するヘルパー関数
+  const getUserName = () => {
+    return (plan as any)?.userAgreementName || user?.actualName || '名前不明'
   }
 
   if (!plan || !user) {
@@ -118,9 +183,17 @@ ${index + 1}. 優先順位: ${service.priority}
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">サービス等利用計画</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {documentType === 'servicePlan' && 'サービス等利用計画'}
+              {documentType === 'weeklySchedule' && '週間計画表'}
+              {documentType === 'needsAssessment' && 'ニーズ整理票'}
+            </h1>
             <p className="text-gray-600 mt-1">
-              {plan.userAgreementName}さんの利用計画（{format(plan.createdAt, 'yyyy年M月d日作成', { locale: ja })}）
+              {getUserName()}さんの
+              {documentType === 'servicePlan' && '利用計画'}
+              {documentType === 'weeklySchedule' && '週間計画表'}
+              {documentType === 'needsAssessment' && 'ニーズ整理票'}
+              （{format(plan.createdAt, 'yyyy年M月d日作成', { locale: ja })}）
             </p>
           </div>
         </div>
@@ -162,7 +235,7 @@ ${index + 1}. 優先順位: ${service.priority}
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">利用者氏名</label>
-                <p className="text-gray-900">{plan.userAgreementName}</p>
+                <p className="text-gray-900">{getUserName()}</p>
               </div>
               
               <div>
@@ -189,68 +262,190 @@ ${index + 1}. 優先順位: ${service.priority}
         </div>
       </div>
 
-      {/* 生活に対する意向 */}
-      <div className="card">
-        <div className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <Target className="w-5 h-5 mr-2" />
-            利用者及びその家族の生活に対する意向
-          </h2>
-          <div className="bg-blue-50 p-4 rounded-lg">
-            <p className="text-gray-900 whitespace-pre-wrap">{plan.lifeGoals}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 援助の方針 */}
-      <div className="card">
-        <div className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <CheckCircle className="w-5 h-5 mr-2" />
-            総合的な援助の方針
-          </h2>
-          <div className="bg-green-50 p-4 rounded-lg">
-            <p className="text-gray-900 whitespace-pre-wrap">{plan.comprehensiveSupport}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 目標設定 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="card">
-          <div className="p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <Target className="w-5 h-5 mr-2" />
-              長期目標
-            </h2>
-            <div className="bg-purple-50 p-4 rounded-lg">
-              <p className="text-gray-900 whitespace-pre-wrap">{plan.longTermGoals}</p>
+      {/* 書類タイプ別内容表示 */}
+      {documentType === 'servicePlan' && (
+        <>
+          {/* サービス等利用計画の表示 */}
+          <div className="card">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Target className="w-5 h-5 mr-2" />
+                利用者及びその家族の生活に対する意向
+              </h2>
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <p className="text-gray-900 whitespace-pre-wrap">{plan.lifeGoals || '記載なし'}</p>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div className="card">
-          <div className="p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <Clock className="w-5 h-5 mr-2" />
-              短期目標
-            </h2>
-            <div className="bg-orange-50 p-4 rounded-lg">
-              <p className="text-gray-900 whitespace-pre-wrap">{plan.shortTermGoals}</p>
+        </>
+      )}
+      
+      {documentType === 'weeklySchedule' && (
+        <>
+          {/* 週間計画表の表示 */}
+          <div className="card">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Target className="w-5 h-5 mr-2" />
+                基本的生活パターン
+              </h2>
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <p className="text-gray-900 whitespace-pre-wrap">{plan.lifeGoals}</p>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* 福祉サービス等 */}
-      <div className="card">
-        <div className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <FileText className="w-5 h-5 mr-2" />
-            福祉サービス等
-          </h2>
           
-          {plan.services.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="card">
+              <div className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-3">月曜日の活動内容</h3>
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <p className="text-gray-900 whitespace-pre-wrap">{plan.comprehensiveSupport}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="card">
+              <div className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-3">火曜日の活動内容</h3>
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <p className="text-gray-900 whitespace-pre-wrap">{plan.longTermGoals}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="card">
+              <div className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-3">水曜日の活動内容</h3>
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <p className="text-gray-900 whitespace-pre-wrap">{plan.shortTermGoals}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="card">
+              <div className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-3">週間留意事項</h3>
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <p className="text-gray-900">健康管理、安全面での配慮等</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+      
+      {documentType === 'needsAssessment' && (
+        <>
+          {/* ニーズ整理票の表示 */}
+          <div className="card">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Target className="w-5 h-5 mr-2" />
+                生活全般の状況とニーズ
+              </h2>
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <p className="text-gray-900 whitespace-pre-wrap">{plan.lifeGoals}</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="card">
+              <div className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-3">ADL（日常生活動作）の状況</h3>
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <p className="text-gray-900 whitespace-pre-wrap">{plan.comprehensiveSupport}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="card">
+              <div className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-3">IADL（手段的日常生活動作）の状況</h3>
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <p className="text-gray-900 whitespace-pre-wrap">{plan.longTermGoals}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="card">
+              <div className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-3">コミュニケーション・社会参加の状況</h3>
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <p className="text-gray-900 whitespace-pre-wrap">{plan.shortTermGoals}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="card">
+              <div className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-3">優先的に解決すべき課題</h3>
+                <div className="bg-red-50 p-4 rounded-lg">
+                  <p className="text-gray-900">緊急性や重要度を考慮した優先課題</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* サービス等利用計画のみの追加コンテンツ */}
+      {documentType === 'servicePlan' && (
+        <>
+          <div className="card">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <CheckCircle className="w-5 h-5 mr-2" />
+                総合的な援助の方針
+              </h2>
+              <div className="bg-green-50 p-4 rounded-lg">
+                <p className="text-gray-900 whitespace-pre-wrap">{plan.comprehensiveSupport || '記載なし'}</p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* サービス等利用計画の目標設定 */}
+      {documentType === 'servicePlan' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="card">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Target className="w-5 h-5 mr-2" />
+                長期目標
+              </h2>
+              <div className="bg-purple-50 p-4 rounded-lg">
+                <p className="text-gray-900 whitespace-pre-wrap">{plan.longTermGoals || '記載なし'}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Clock className="w-5 h-5 mr-2" />
+                短期目標
+              </h2>
+              <div className="bg-orange-50 p-4 rounded-lg">
+                <p className="text-gray-900 whitespace-pre-wrap">{plan.shortTermGoals || '記載なし'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* サービス等利用計画の福祉サービス等 */}
+      {documentType === 'servicePlan' && (
+        <div className="card">
+          <div className="p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <FileText className="w-5 h-5 mr-2" />
+              福祉サービス等
+            </h2>
+          
+          {!plan.services || plan.services.length === 0 ? (
             <div className="text-center py-8">
               <AlertTriangle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
               <p className="text-gray-600">登録されているサービスはありません</p>
@@ -262,7 +457,7 @@ ${index + 1}. 優先順位: ${service.priority}
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-medium text-gray-900">サービス {index + 1}</h3>
                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      優先順位: {service.priority}
+                      優先順位: {service.priority || '未設定'}
                     </span>
                   </div>
                   
@@ -270,39 +465,39 @@ ${index + 1}. 優先順位: ${service.priority}
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">解決すべき課題</label>
-                        <p className="text-gray-900 text-sm bg-gray-50 p-3 rounded">{service.issueToSolve}</p>
+                        <p className="text-gray-900 text-sm bg-gray-50 p-3 rounded">{service.issueToSolve || '記載なし'}</p>
                       </div>
                       
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">支援目標</label>
-                        <p className="text-gray-900 text-sm bg-gray-50 p-3 rounded">{service.supportGoal}</p>
+                        <p className="text-gray-900 text-sm bg-gray-50 p-3 rounded">{service.supportGoal || '記載なし'}</p>
                       </div>
                       
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">達成時期</label>
-                        <p className="text-gray-900 text-sm">{service.completionPeriod}</p>
+                        <p className="text-gray-900 text-sm">{service.completionPeriod || '未設定'}</p>
                       </div>
                       
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">評価時期</label>
-                        <p className="text-gray-900 text-sm">{service.evaluationPeriod}</p>
+                        <p className="text-gray-900 text-sm">{service.evaluationPeriod || '未設定'}</p>
                       </div>
                     </div>
                     
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">サービス内容・量</label>
-                        <p className="text-gray-900 text-sm bg-gray-50 p-3 rounded">{service.serviceDetails}</p>
+                        <p className="text-gray-900 text-sm bg-gray-50 p-3 rounded">{service.serviceDetails || '記載なし'}</p>
                       </div>
                       
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">提供事業所名</label>
-                        <p className="text-gray-900 text-sm">{service.providerName}</p>
+                        <p className="text-gray-900 text-sm">{service.providerName || '未設定'}</p>
                       </div>
                       
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">本人の役割</label>
-                        <p className="text-gray-900 text-sm bg-gray-50 p-3 rounded">{service.userRole}</p>
+                        <p className="text-gray-900 text-sm bg-gray-50 p-3 rounded">{service.userRole || '記載なし'}</p>
                       </div>
                       
                       {service.otherNotes && (
@@ -317,15 +512,21 @@ ${index + 1}. 優先順位: ${service.priority}
               ))}
             </div>
           )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 作成情報 */}
       <div className="card bg-gray-50">
         <div className="p-4">
           <div className="flex items-center justify-between text-sm text-gray-600">
             <span>作成日時: {format(plan.createdAt, 'yyyy年M月d日 HH:mm', { locale: ja })}</span>
-            <span>計画ID: {plan.id}</span>
+            <span>
+              {documentType === 'servicePlan' && '利用計画'}
+              {documentType === 'weeklySchedule' && '週間計画表'}
+              {documentType === 'needsAssessment' && 'ニーズ整理票'}
+              ID: {plan.id}
+            </span>
           </div>
         </div>
       </div>

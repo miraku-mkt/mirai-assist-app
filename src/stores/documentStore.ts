@@ -20,6 +20,7 @@ interface DocumentState {
   updateServicePlan: (id: string, updates: Partial<ServicePlan>) => void
   deleteServicePlan: (id: string) => void
   getServicePlansByUserId: (userId: string) => ServicePlan[]
+  getServicePlanById: (id: string) => ServicePlan | undefined
   
   // Weekly Schedule methods
   addWeeklySchedule: (schedule: Omit<WeeklySchedule, 'id' | 'createdAt' | 'updatedAt'>) => void
@@ -44,6 +45,9 @@ interface DocumentState {
   updateInterviewRecord: (id: string, updates: Partial<InterviewRecord>) => void
   deleteInterviewRecord: (id: string) => void
   getInterviewRecordsByUserId: (userId: string) => InterviewRecord[]
+  
+  // Universal document retrieval methods
+  getDocumentById: (id: string) => ServicePlan | WeeklySchedule | NeedsAssessment | undefined
   
   // Clear methods
   clearUserDocuments: (userId: string) => void
@@ -92,6 +96,10 @@ export const useDocumentStore = create<DocumentState>()(
 
       getServicePlansByUserId: (userId) => {
         return get().servicePlans.filter((plan) => plan.userId === userId)
+      },
+
+      getServicePlanById: (id) => {
+        return get().servicePlans.find((plan) => plan.id === id)
       },
 
       // Weekly Schedule methods
@@ -230,6 +238,25 @@ export const useDocumentStore = create<DocumentState>()(
 
       getInterviewRecordsByUserId: (userId) => {
         return get().interviewRecords.filter((record) => record.userId === userId)
+      },
+
+      // Universal document retrieval methods
+      getDocumentById: (id) => {
+        const state = get()
+        
+        // Check service plans first
+        const servicePlan = state.servicePlans.find((plan) => plan.id === id)
+        if (servicePlan) return servicePlan
+        
+        // Check weekly schedules
+        const weeklySchedule = state.weeklySchedules.find((schedule) => schedule.id === id)
+        if (weeklySchedule) return weeklySchedule
+        
+        // Check needs assessments
+        const needsAssessment = state.needsAssessments.find((assessment) => assessment.id === id)
+        if (needsAssessment) return needsAssessment
+        
+        return undefined
       },
 
       // Clear methods

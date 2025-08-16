@@ -4,7 +4,6 @@ import {
   UserPlus, 
   Edit3, 
   Trash2, 
-  FileText,
   Eye,
   EyeOff 
 } from 'lucide-react'
@@ -165,10 +164,6 @@ const UserManagement: React.FC = () => {
     }
   }
 
-  const handleCreateDocument = (user: User) => {
-    setCurrentUser(user)
-    navigate(`/documents/${user.id}`)
-  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -514,13 +509,6 @@ const UserManagement: React.FC = () => {
                       </td>
                       <td className="py-4 px-4">
                         <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={() => handleCreateDocument(user)}
-                            className="p-2 text-primary-600 hover:text-primary-800 hover:bg-primary-50 rounded-lg transition-colors"
-                            title="書類作成"
-                          >
-                            <FileText size={16} />
-                          </button>
                           <button
                             onClick={() => handleEdit(user)}
                             className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
