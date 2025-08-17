@@ -5,7 +5,8 @@ import {
   Plus, 
   Search,
   Eye,
-  Edit
+  Edit,
+  Trash2
 } from 'lucide-react'
 import { useUserStore } from '@/stores/userStore'
 import { useDocumentStore } from '@/stores/documentStore'
@@ -13,7 +14,12 @@ import { useDocumentStore } from '@/stores/documentStore'
 const PlanManagement: React.FC = () => {
   const navigate = useNavigate()
   const { users, getUserById } = useUserStore()
-  const { servicePlans } = useDocumentStore()
+  const { 
+    servicePlans, 
+    deleteServicePlan, 
+    deleteWeeklySchedule, 
+    deleteNeedsAssessment 
+  } = useDocumentStore()
   const [searchTerm, setSearchTerm] = useState('')
 
   // 検索フィルタリング（復号化された情報を使用）
@@ -75,6 +81,34 @@ const PlanManagement: React.FC = () => {
 
   const handleEditPlan = (planId: string) => {
     navigate(`/plan/edit/${planId}`)
+  }
+
+  const handleDeletePlan = (planId: string, planType: 'servicePlan' | 'weeklySchedule' | 'needsAssessment') => {
+    try {
+      if (!window.confirm('この計画を削除してもよろしいですか？')) {
+        return
+      }
+
+      switch (planType) {
+        case 'servicePlan':
+          deleteServicePlan(planId)
+          break
+        case 'weeklySchedule':
+          deleteWeeklySchedule(planId)
+          break
+        case 'needsAssessment':
+          deleteNeedsAssessment(planId)
+          break
+        default:
+          console.error('Unknown plan type:', planType)
+          return
+      }
+
+      console.log(`Successfully deleted ${planType} with ID: ${planId}`)
+    } catch (error) {
+      console.error('Error deleting plan:', error)
+      alert('計画の削除中にエラーが発生しました。')
+    }
   }
 
   return (
@@ -184,7 +218,7 @@ const PlanManagement: React.FC = () => {
                         <div className="flex flex-col items-end space-y-3">
                           {/* 作成済み書類の確認・編集ボタン */}
                           {hasAnyPlan && userPlans && (
-                            <div className="space-y-2 min-w-80">
+                            <div className="space-y-2 min-w-96">
                               {userPlans.servicePlan?.id && (
                                 <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg border border-blue-200">
                                   <span className="text-sm font-medium text-blue-900">サービス等利用計画</span>
@@ -204,6 +238,14 @@ const PlanManagement: React.FC = () => {
                                     >
                                       <Edit className="w-4 h-4 mr-1" />
                                       編集
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeletePlan(userPlans.servicePlan.id, 'servicePlan')}
+                                      className="btn-danger flex items-center text-sm px-3 py-1.5 w-20 justify-center"
+                                      title="サービス等利用計画を削除"
+                                    >
+                                      <Trash2 className="w-4 h-4 mr-1" />
+                                      削除
                                     </button>
                                   </div>
                                 </div>
@@ -228,6 +270,14 @@ const PlanManagement: React.FC = () => {
                                       <Edit className="w-4 h-4 mr-1" />
                                       編集
                                     </button>
+                                    <button
+                                      onClick={() => handleDeletePlan(userPlans.weeklySchedule.id, 'weeklySchedule')}
+                                      className="btn-danger flex items-center text-sm px-3 py-1.5 w-20 justify-center"
+                                      title="週間計画表を削除"
+                                    >
+                                      <Trash2 className="w-4 h-4 mr-1" />
+                                      削除
+                                    </button>
                                   </div>
                                 </div>
                               )}
@@ -250,6 +300,14 @@ const PlanManagement: React.FC = () => {
                                     >
                                       <Edit className="w-4 h-4 mr-1" />
                                       編集
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeletePlan(userPlans.needsAssessment.id, 'needsAssessment')}
+                                      className="btn-danger flex items-center text-sm px-3 py-1.5 w-20 justify-center"
+                                      title="ニーズ整理票を削除"
+                                    >
+                                      <Trash2 className="w-4 h-4 mr-1" />
+                                      削除
                                     </button>
                                   </div>
                                 </div>

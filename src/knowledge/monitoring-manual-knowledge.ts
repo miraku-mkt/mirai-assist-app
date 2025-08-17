@@ -1,4 +1,4 @@
-/**
+monitoring-manual-knowledge.ts/**
  * 障害福祉サービス モニタリング報告書作成のための知識ベース
  * 
  * 出典：manual フォルダ全170枚の画像分析結果

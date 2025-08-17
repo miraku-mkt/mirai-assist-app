@@ -38,11 +38,11 @@ const PlanCreate: React.FC = () => {
   const { userId, planId } = useParams<{ userId: string; planId: string }>()
   const navigate = useNavigate()
   const { getUserById } = useUserStore()
-  const { addServicePlan, getServicePlanById, updateServicePlan } = useDocumentStore()
+  const { addServicePlan, getDocumentById, updateServicePlan } = useDocumentStore()
   
   // 編集モードかどうかを判定
   const isEditMode = !!planId
-  const existingPlan = isEditMode ? getServicePlanById(planId) : null
+  const existingPlan = isEditMode ? getDocumentById(planId) as ServicePlan : null
   
   // 編集モードの場合、既存プランからuserIdを取得
   const actualUserId = userId || (existingPlan ? existingPlan.userId : null)
@@ -96,6 +96,25 @@ const PlanCreate: React.FC = () => {
   ]
 
   const user = actualUserId ? getUserById(actualUserId) : null
+  
+  // データ整合性チェック
+  if (isEditMode && !existingPlan) {
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="text-center py-12">
+          <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">計画書が見つかりません</h2>
+          <p className="text-gray-600 mb-4">指定されたIDの計画書は存在しないか、削除されている可能性があります。</p>
+          <button 
+            onClick={() => navigate('/plan')} 
+            className="btn-secondary"
+          >
+            計画書一覧に戻る
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   useEffect(() => {
     if (user && user.actualName) {
@@ -109,25 +128,91 @@ const PlanCreate: React.FC = () => {
   // 編集モードの場合、既存プランの情報を読み込む
   useEffect(() => {
     if (isEditMode && existingPlan) {
+      const plan = existingPlan as any
+      
+      // 書類タイプを安全に判定
+      const documentType = (() => {
+        const explicitType = plan.documentType
+        if (explicitType && ['servicePlan', 'weeklySchedule', 'needsAssessment'].includes(explicitType)) {
+          return explicitType
+        }
+        
+        // プロパティから推測
+        if ('intake' in plan && 'assessment' in plan && 'planning' in plan) {
+          return 'needsAssessment'
+        }
+        
+        if ('schedule' in plan && 'weeklyServices' in plan) {
+          return 'weeklySchedule'
+        }
+        
+        return 'servicePlan'
+      })()
+      
       setFormData(prev => ({
         ...prev,
-        planDate: format(existingPlan.planDate, 'yyyy-MM-dd'),
-        userAgreementName: existingPlan.userAgreementName,
-        documentType: (existingPlan as any).documentType || 'servicePlan'
+        planDate: plan.planDate ? format(new Date(plan.planDate), 'yyyy-MM-dd') : 
+                  plan.createdAt ? format(new Date(plan.createdAt), 'yyyy-MM-dd') : 
+                  format(new Date(), 'yyyy-MM-dd'),
+        userAgreementName: plan.userAgreementName || user?.actualName || '',
+        documentType: documentType
       }))
       
-      setGeneratedPlan({
-        lifeGoals: existingPlan.lifeGoals,
-        comprehensiveSupport: existingPlan.comprehensiveSupport,
-        longTermGoals: existingPlan.longTermGoals,
-        shortTermGoals: existingPlan.shortTermGoals,
-        services: existingPlan.services
-      })
+      // 書類タイプに応じてデータを安全に設定
+      if (documentType === 'servicePlan') {
+        setGeneratedPlan({
+          lifeGoals: plan.lifeGoals || '',
+          comprehensiveSupport: plan.comprehensiveSupport || '',
+          longTermGoals: plan.longTermGoals || '',
+          shortTermGoals: plan.shortTermGoals || '',
+          services: plan.services || []
+        })
+      } else if (documentType === 'needsAssessment') {
+        // ニーズ整理票の場合、適切な形式に変換
+        setGeneratedPlan({
+          lifeGoals: '', // 従来の項目は空に
+          comprehensiveSupport: '',
+          longTermGoals: '',
+          shortTermGoals: '',
+          services: [],
+          // 新しいニーズ整理票の構造
+          intake: {
+            expressedNeeds: plan.intake?.expressedNeeds || '',
+            counselorNotes: plan.intake?.counselorNotes || ''
+          },
+          assessment: {
+            biological: plan.assessment?.biological || '',
+            psychological: plan.assessment?.psychological || '',
+            social: plan.assessment?.social || '',
+            environment: plan.assessment?.environment || '',
+            supportIssues: plan.assessment?.supportIssues || '',
+            professionalAssessment: plan.assessment?.professionalAssessment || ''
+          },
+          planning: {
+            supportMethods: plan.planning?.supportMethods || ''
+          },
+          personSummary: plan.personSummary || ''
+        })
+      } else if (documentType === 'weeklySchedule') {
+        // 週間計画表の場合、適切な形式に変換
+        setGeneratedPlan({
+          lifeGoals: '', // 従来の項目は空に
+          comprehensiveSupport: '',
+          longTermGoals: '',
+          shortTermGoals: '',
+          services: [],
+          // 新しい週間計画表の構造
+          schedule: plan.schedule || [],
+          weeklyServices: plan.weeklyServices || '',
+          weekendActivities: plan.weekendActivities || '',
+          lifeOverview: plan.lifeOverview || ''
+        })
+      }
       
       // 編集モードの場合は直接ステップ3に進む
       setCurrentStep(3)
     }
-  }, [isEditMode, existingPlan])
+  }, [isEditMode, existingPlan, user?.actualName])
 
   // ファイルアップロード処理
   const handleFileUpload = (files: FileList | null, type: FileType['key']) => {
@@ -207,15 +292,63 @@ const PlanCreate: React.FC = () => {
         .join('\n')
 
       // AI生成（選択された書類タイプに応じたプロンプトを使用）
-      const result = await generateDocumentWithAI(formData.documentType, allContent, user)
+      const result = await generateDocumentWithAI(
+        formData.documentType, 
+        {}, 
+        {
+          interviewText: allContent,
+          userInfo: user
+        }
+      )
       
-      setGeneratedPlan({
-        lifeGoals: result.lifeGoals || '',
-        comprehensiveSupport: result.comprehensiveSupport || '',
-        longTermGoals: result.longTermGoals || '',
-        shortTermGoals: result.shortTermGoals || '',
-        services: result.services || []
-      })
+      if (formData.documentType === 'needsAssessment') {
+        // ニーズ整理票の場合、新しい構造で設定
+        setGeneratedPlan({
+          lifeGoals: '',
+          comprehensiveSupport: '',
+          longTermGoals: '',
+          shortTermGoals: '',
+          services: [],
+          intake: {
+            expressedNeeds: result.intake?.expressedNeeds || result.lifeGoals || '',
+            counselorNotes: result.intake?.counselorNotes || ''
+          },
+          assessment: {
+            biological: result.assessment?.biological || '',
+            psychological: result.assessment?.psychological || '',
+            social: result.assessment?.social || '',
+            environment: result.assessment?.environment || '',
+            supportIssues: result.assessment?.supportIssues || result.longTermGoals || '',
+            professionalAssessment: result.assessment?.professionalAssessment || ''
+          },
+          planning: {
+            supportMethods: result.planning?.supportMethods || result.comprehensiveSupport || ''
+          },
+          personSummary: result.personSummary || result.shortTermGoals || ''
+        })
+      } else if (formData.documentType === 'weeklySchedule') {
+        // 週間計画表の場合、新しい構造で設定
+        setGeneratedPlan({
+          lifeGoals: '',
+          comprehensiveSupport: '',
+          longTermGoals: '',
+          shortTermGoals: '',
+          services: [],
+          schedule: result.schedule || [],
+          weeklyServices: result.weeklyServices || result.comprehensiveSupport || '',
+          weekendActivities: result.weekendActivities || result.longTermGoals || '',
+          lifeOverview: result.lifeOverview || result.lifeGoals || ''
+        })
+      } else {
+        // サービス等利用計画の場合、従来通り
+        setGeneratedPlan({
+          lifeGoals: result.lifeGoals || '',
+          comprehensiveSupport: result.comprehensiveSupport || '',
+          longTermGoals: result.longTermGoals || '',
+          shortTermGoals: result.shortTermGoals || '',
+          services: result.services || []
+        })
+      }
       
       // 生成完了後、ステップ3へ移行
       setTimeout(() => {
@@ -223,7 +356,7 @@ const PlanCreate: React.FC = () => {
       }, 500)
     } catch (error) {
       console.error('AI生成エラー:', error)
-      alert('サービス等利用計画の生成に失敗しました')
+      alert(`AI生成に失敗しました: ${error.message}`)
     } finally {
       setIsGenerating(false)
     }
@@ -299,18 +432,41 @@ const PlanCreate: React.FC = () => {
       return
     }
 
-    const planData = {
+    let planData: any = {
       userId: actualUserId,
       planDate: new Date(formData.planDate),
       userAgreementName: formData.userAgreementName,
-      documentType: formData.documentType, // 書類タイプを追加
-      lifeGoals: generatedPlan.lifeGoals,
-      comprehensiveSupport: generatedPlan.comprehensiveSupport,
-      longTermGoals: generatedPlan.longTermGoals,
-      shortTermGoals: generatedPlan.shortTermGoals,
-      services: generatedPlan.services.filter(service => 
-        service.supportGoal && service.supportGoal.trim() !== ''
-      ) as ServicePlanItem[]
+      documentType: formData.documentType
+    }
+
+    // 書類タイプ別にデータ構造を設定
+    if (formData.documentType === 'servicePlan') {
+      planData = {
+        ...planData,
+        lifeGoals: generatedPlan.lifeGoals,
+        comprehensiveSupport: generatedPlan.comprehensiveSupport,
+        longTermGoals: generatedPlan.longTermGoals,
+        shortTermGoals: generatedPlan.shortTermGoals,
+        services: generatedPlan.services.filter(service => 
+          service.supportGoal && service.supportGoal.trim() !== ''
+        ) as ServicePlanItem[]
+      }
+    } else if (formData.documentType === 'needsAssessment') {
+      planData = {
+        ...planData,
+        intake: (generatedPlan as any).intake || {},
+        assessment: (generatedPlan as any).assessment || {},
+        planning: (generatedPlan as any).planning || {},
+        personSummary: (generatedPlan as any).personSummary || ''
+      }
+    } else if (formData.documentType === 'weeklySchedule') {
+      planData = {
+        ...planData,
+        schedule: (generatedPlan as any).schedule || [],
+        weeklyServices: (generatedPlan as any).weeklyServices || '',
+        weekendActivities: (generatedPlan as any).weekendActivities || '',
+        lifeOverview: (generatedPlan as any).lifeOverview || ''
+      }
     }
 
     const documentNames = {
@@ -765,95 +921,196 @@ const PlanCreate: React.FC = () => {
                 {/* 週間計画表のフォーム */}
                 {formData.documentType === 'weeklySchedule' && (
                   <>
-                    <div className="form-group">
-                      <label className="form-label">基本的生活パターン</label>
-                      <textarea
-                        value={generatedPlan.lifeGoals || ''}
-                        onChange={(e) => updateGeneratedPlan('lifeGoals', e.target.value)}
-                        className="input-field"
-                        rows={4}
-                        placeholder="起床、就寝時間、食事時間、基本的な生活リズム等"
-                      />
+                    {/* 週間スケジュール設定 */}
+                    <div className="border border-gray-200 rounded-lg p-4 mb-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">週間スケジュール</h3>
+                      <p className="text-sm text-gray-600 mb-4">各曜日の時間別活動内容を設定してください</p>
+                      
+                      {/* 曜日別のスケジュール設定 */}
+                      {['月', '火', '水', '木', '金', '土', '日'].map((dayName, dayIndex) => {
+                        const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][dayIndex]
+                        const daySchedule = (generatedPlan as any)?.schedule?.find((s: any) => s.day === dayKey) || { day: dayKey, timeSlots: [] }
+                        const timeSlots = daySchedule.timeSlots || []
+                        
+                        return (
+                          <div key={dayName} className="mb-6 border border-gray-100 rounded p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-md font-medium text-gray-800">{dayName}曜日</h4>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentSchedule = (generatedPlan as any)?.schedule || []
+                                  const updatedSchedule = currentSchedule.filter((s: any) => s.day !== dayKey)
+                                  const newTimeSlot = {
+                                    startTime: '09:00',
+                                    endTime: '10:00',
+                                    activity: '',
+                                    isService: false
+                                  }
+                                  const updatedDaySchedule = {
+                                    day: dayKey,
+                                    timeSlots: [...timeSlots, newTimeSlot]
+                                  }
+                                  updatedSchedule.push(updatedDaySchedule)
+                                  updateGeneratedPlan('schedule', updatedSchedule)
+                                }}
+                                className="btn-secondary text-sm"
+                              >
+                                活動を追加
+                              </button>
+                            </div>
+                            
+                            {timeSlots.length === 0 ? (
+                              <div className="text-center py-4 border-2 border-dashed border-gray-200 rounded">
+                                <p className="text-gray-500 text-sm">活動を追加してください</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                {timeSlots.map((timeSlot: any, slotIndex: number) => (
+                                  <div key={slotIndex} className="border border-gray-200 rounded p-3 bg-gray-50">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                                      <div className="form-group">
+                                        <label className="form-label text-sm">開始時間</label>
+                                        <input
+                                          type="time"
+                                          value={timeSlot.startTime || ''}
+                                          onChange={(e) => {
+                                            const currentSchedule = (generatedPlan as any)?.schedule || []
+                                            const updatedSchedule = currentSchedule.filter((s: any) => s.day !== dayKey)
+                                            const updatedTimeSlots = [...timeSlots]
+                                            updatedTimeSlots[slotIndex] = { ...timeSlot, startTime: e.target.value }
+                                            const updatedDaySchedule = { day: dayKey, timeSlots: updatedTimeSlots }
+                                            updatedSchedule.push(updatedDaySchedule)
+                                            updateGeneratedPlan('schedule', updatedSchedule)
+                                          }}
+                                          className="input-field"
+                                        />
+                                      </div>
+                                      
+                                      <div className="form-group">
+                                        <label className="form-label text-sm">終了時間</label>
+                                        <input
+                                          type="time"
+                                          value={timeSlot.endTime || ''}
+                                          onChange={(e) => {
+                                            const currentSchedule = (generatedPlan as any)?.schedule || []
+                                            const updatedSchedule = currentSchedule.filter((s: any) => s.day !== dayKey)
+                                            const updatedTimeSlots = [...timeSlots]
+                                            updatedTimeSlots[slotIndex] = { ...timeSlot, endTime: e.target.value }
+                                            const updatedDaySchedule = { day: dayKey, timeSlots: updatedTimeSlots }
+                                            updatedSchedule.push(updatedDaySchedule)
+                                            updateGeneratedPlan('schedule', updatedSchedule)
+                                          }}
+                                          className="input-field"
+                                        />
+                                      </div>
+                                      
+                                      <div className="form-group">
+                                        <label className="form-label text-sm">活動内容</label>
+                                        <input
+                                          type="text"
+                                          value={timeSlot.activity || ''}
+                                          onChange={(e) => {
+                                            const currentSchedule = (generatedPlan as any)?.schedule || []
+                                            const updatedSchedule = currentSchedule.filter((s: any) => s.day !== dayKey)
+                                            const updatedTimeSlots = [...timeSlots]
+                                            updatedTimeSlots[slotIndex] = { ...timeSlot, activity: e.target.value }
+                                            const updatedDaySchedule = { day: dayKey, timeSlots: updatedTimeSlots }
+                                            updatedSchedule.push(updatedDaySchedule)
+                                            updateGeneratedPlan('schedule', updatedSchedule)
+                                          }}
+                                          className="input-field"
+                                          placeholder="活動内容を入力"
+                                        />
+                                      </div>
+                                      
+                                      <div className="flex items-center space-x-2">
+                                        <div className="form-group flex-1">
+                                          <label className="flex items-center text-sm">
+                                            <input
+                                              type="checkbox"
+                                              checked={timeSlot.isService || false}
+                                              onChange={(e) => {
+                                                const currentSchedule = (generatedPlan as any)?.schedule || []
+                                                const updatedSchedule = currentSchedule.filter((s: any) => s.day !== dayKey)
+                                                const updatedTimeSlots = [...timeSlots]
+                                                updatedTimeSlots[slotIndex] = { ...timeSlot, isService: e.target.checked }
+                                                const updatedDaySchedule = { day: dayKey, timeSlots: updatedTimeSlots }
+                                                updatedSchedule.push(updatedDaySchedule)
+                                                updateGeneratedPlan('schedule', updatedSchedule)
+                                              }}
+                                              className="mr-2"
+                                            />
+                                            サービス
+                                          </label>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const currentSchedule = (generatedPlan as any)?.schedule || []
+                                            const updatedSchedule = currentSchedule.filter((s: any) => s.day !== dayKey)
+                                            const updatedTimeSlots = timeSlots.filter((_: any, i: number) => i !== slotIndex)
+                                            if (updatedTimeSlots.length > 0) {
+                                              const updatedDaySchedule = { day: dayKey, timeSlots: updatedTimeSlots }
+                                              updatedSchedule.push(updatedDaySchedule)
+                                            }
+                                            updateGeneratedPlan('schedule', updatedSchedule)
+                                          }}
+                                          className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label">月曜日の活動内容</label>
-                      <textarea
-                        value={generatedPlan.comprehensiveSupport || ''}
-                        onChange={(e) => updateGeneratedPlan('comprehensiveSupport', e.target.value)}
-                        className="input-field"
-                        rows={3}
-                        placeholder="午前・午後・夕方の活動内容を記載"
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">火曜日の活動内容</label>
-                      <textarea
-                        value={generatedPlan.longTermGoals || ''}
-                        onChange={(e) => updateGeneratedPlan('longTermGoals', e.target.value)}
-                        className="input-field"
-                        rows={3}
-                        placeholder="午前・午後・夕方の活動内容を記載"
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">水曜日の活動内容</label>
-                      <textarea
-                        value={generatedPlan.shortTermGoals || ''}
-                        onChange={(e) => updateGeneratedPlan('shortTermGoals', e.target.value)}
-                        className="input-field"
-                        rows={3}
-                        placeholder="午前・午後・夕方の活動内容を記載"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 週単位以外のサービス */}
+                    <div className="border border-gray-200 rounded-lg p-4 mb-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">週単位以外のサービス</h3>
                       <div className="form-group">
-                        <label className="form-label">木曜日の活動内容</label>
                         <textarea
+                          value={(generatedPlan as any)?.weeklyServices || ''}
+                          onChange={(e) => updateGeneratedPlan('weeklyServices', e.target.value)}
                           className="input-field"
                           rows={3}
-                          placeholder="午前・午後・夕方の活動内容を記載"
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label">金曜日の活動内容</label>
-                        <textarea
-                          className="input-field"
-                          rows={3}
-                          placeholder="午前・午後・夕方の活動内容を記載"
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label">土曜日の活動内容</label>
-                        <textarea
-                          className="input-field"
-                          rows={3}
-                          placeholder="午前・午後・夕方の活動内容を記載"
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label">日曜日の活動内容</label>
-                        <textarea
-                          className="input-field"
-                          rows={3}
-                          placeholder="午前・午後・夕方の活動内容を記載"
+                          placeholder="月単位、年単位で実施するサービスや支援内容"
                         />
                       </div>
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label">週間を通しての留意事項</label>
-                      <textarea
-                        className="input-field"
-                        rows={3}
-                        placeholder="健康管理、安全面での配慮、緊急時対応等"
-                      />
+                    {/* 主な日常生活上の活動 */}
+                    <div className="border border-gray-200 rounded-lg p-4 mb-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">主な日常生活上の活動</h3>
+                      <div className="form-group">
+                        <textarea
+                          value={(generatedPlan as any)?.weekendActivities || ''}
+                          onChange={(e) => updateGeneratedPlan('weekendActivities', e.target.value)}
+                          className="input-field"
+                          rows={3}
+                          placeholder="日常生活における基本的な活動内容"
+                        />
+                      </div>
+                    </div>
+
+                    {/* サービス提供によって実現する生活の全体像 */}
+                    <div className="border border-gray-200 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">サービス提供によって実現する生活の全体像</h3>
+                      <div className="form-group">
+                        <textarea
+                          value={(generatedPlan as any)?.lifeOverview || generatedPlan.lifeGoals || ''}
+                          onChange={(e) => updateGeneratedPlan('lifeOverview', e.target.value)}
+                          className="input-field"
+                          rows={4}
+                          placeholder="週間計画表の実施により実現される利用者の生活全体像"
+                        />
+                      </div>
                     </div>
                   </>
                 )}
@@ -861,95 +1118,167 @@ const PlanCreate: React.FC = () => {
                 {/* ニーズ整理票のフォーム */}
                 {formData.documentType === 'needsAssessment' && (
                   <>
-                    <div className="form-group">
-                      <label className="form-label">生活全般の状況とニーズ</label>
-                      <textarea
-                        value={generatedPlan.lifeGoals || ''}
-                        onChange={(e) => updateGeneratedPlan('lifeGoals', e.target.value)}
-                        className="input-field"
-                        rows={4}
-                        placeholder="現在の生活状況、困っていること、希望していること等"
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">ADL（日常生活動作）の状況</label>
-                      <textarea
-                        value={generatedPlan.comprehensiveSupport || ''}
-                        onChange={(e) => updateGeneratedPlan('comprehensiveSupport', e.target.value)}
-                        className="input-field"
-                        rows={3}
-                        placeholder="食事、入浴、着替え、移動等の自立度と必要な支援"
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">IADL（手段的日常生活動作）の状況</label>
-                      <textarea
-                        value={generatedPlan.longTermGoals || ''}
-                        onChange={(e) => updateGeneratedPlan('longTermGoals', e.target.value)}
-                        className="input-field"
-                        rows={3}
-                        placeholder="買い物、調理、掃除、金銭管理等の状況と必要な支援"
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">コミュニケーション・社会参加の状況</label>
-                      <textarea
-                        value={generatedPlan.shortTermGoals || ''}
-                        onChange={(e) => updateGeneratedPlan('shortTermGoals', e.target.value)}
-                        className="input-field"
-                        rows={3}
-                        placeholder="意思疎通方法、社会との関わり、対人関係等"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="form-group">
-                        <label className="form-label">医療的ケア・健康管理</label>
-                        <textarea
-                          className="input-field"
-                          rows={3}
-                          placeholder="服薬管理、通院状況、医療的配慮等"
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label">行動・心理症状（BPSD等）</label>
-                        <textarea
-                          className="input-field"
-                          rows={3}
-                          placeholder="問題となる行動、対応方法、環境調整等"
-                        />
+                    {/* インテーク段階 */}
+                    <div className="border border-gray-200 rounded-lg p-4 mb-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">インテーク段階</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="form-group">
+                          <label className="form-label">本人の表明している希望・解決したい課題</label>
+                          <textarea
+                            value={(generatedPlan as any)?.intake?.expressedNeeds || ''}
+                            onChange={(e) => updateGeneratedPlan('intake', { 
+                              ...(generatedPlan as any)?.intake, 
+                              expressedNeeds: e.target.value 
+                            })}
+                            className="input-field"
+                            rows={4}
+                            placeholder="利用者本人が表明している希望や解決したい課題"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">作成者のおさえておきたい情報</label>
+                          <textarea
+                            value={(generatedPlan as any)?.intake?.counselorNotes || ''}
+                            onChange={(e) => updateGeneratedPlan('intake', { 
+                              ...(generatedPlan as any)?.intake, 
+                              counselorNotes: e.target.value 
+                            })}
+                            className="input-field"
+                            rows={4}
+                            placeholder="計画作成者として把握しておきたい情報"
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label">家族・介護者の状況</label>
-                      <textarea
-                        className="input-field"
-                        rows={3}
-                        placeholder="家族構成、介護負担、家族の希望・意向等"
-                      />
+                    {/* アセスメント段階 */}
+                    <div className="border border-gray-200 rounded-lg p-4 mb-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">アセスメント段階</h3>
+                      
+                      {/* 理解・解釈・仮説 */}
+                      <div className="mb-6">
+                        <h4 className="text-md font-semibold text-gray-800 mb-4">理解・解釈・仮説</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="form-group">
+                            <label className="form-label">生物的なこと</label>
+                            <textarea
+                              value={(generatedPlan as any)?.assessment?.biological || ''}
+                              onChange={(e) => updateGeneratedPlan('assessment', { 
+                                ...(generatedPlan as any)?.assessment, 
+                                biological: e.target.value 
+                              })}
+                              className="input-field"
+                              rows={3}
+                              placeholder="身体的な状況、疾病、障害の状況等"
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">心理的なこと</label>
+                            <textarea
+                              value={(generatedPlan as any)?.assessment?.psychological || ''}
+                              onChange={(e) => updateGeneratedPlan('assessment', { 
+                                ...(generatedPlan as any)?.assessment, 
+                                psychological: e.target.value 
+                              })}
+                              className="input-field"
+                              rows={3}
+                              placeholder="精神的な状況、認知機能、感情面等"
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">社会性・対人関係の特徴</label>
+                            <textarea
+                              value={(generatedPlan as any)?.assessment?.social || ''}
+                              onChange={(e) => updateGeneratedPlan('assessment', { 
+                                ...(generatedPlan as any)?.assessment, 
+                                social: e.target.value 
+                              })}
+                              className="input-field"
+                              rows={3}
+                              placeholder="コミュニケーション能力、対人関係の特徴等"
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">環境</label>
+                            <textarea
+                              value={(generatedPlan as any)?.assessment?.environment || ''}
+                              onChange={(e) => updateGeneratedPlan('assessment', { 
+                                ...(generatedPlan as any)?.assessment, 
+                                environment: e.target.value 
+                              })}
+                              className="input-field"
+                              rows={3}
+                              placeholder="住環境、家族環境、地域環境等"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 支援課題 */}
+                      <div className="form-group">
+                        <label className="form-label">支援課題（支援が必要と作成者が思うこと）</label>
+                        <textarea
+                          value={(generatedPlan as any)?.assessment?.supportIssues || ''}
+                          onChange={(e) => updateGeneratedPlan('assessment', { 
+                            ...(generatedPlan as any)?.assessment, 
+                            supportIssues: e.target.value 
+                          })}
+                          className="input-field"
+                          rows={4}
+                          placeholder="支援が必要と考える課題"
+                        />
+                      </div>
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label">環境・住環境の状況</label>
-                      <textarea
-                        className="input-field"
-                        rows={3}
-                        placeholder="住居形態、バリアフリー状況、地域資源の活用等"
-                      />
+                    {/* 理解・解釈・仮説② */}
+                    <div className="border border-gray-200 rounded-lg p-4 mb-6">
+                      <h3 className="text-md font-semibold text-gray-800 mb-4">理解・解釈・仮説②</h3>
+                      <div className="form-group">
+                        <label className="form-label">専門的アセスメントや他者の解釈・推測</label>
+                        <textarea
+                          value={(generatedPlan as any)?.assessment?.professionalAssessment || ''}
+                          onChange={(e) => updateGeneratedPlan('assessment', { 
+                            ...(generatedPlan as any)?.assessment, 
+                            professionalAssessment: e.target.value 
+                          })}
+                          className="input-field"
+                          rows={4}
+                          placeholder="専門機関のアセスメント結果や他の専門職の意見等"
+                        />
+                      </div>
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label">優先的に解決すべき課題</label>
-                      <textarea
-                        className="input-field"
-                        rows={4}
-                        placeholder="緊急性や重要度を考慮した優先課題とその理由"
-                      />
+                    {/* プランニング段階 */}
+                    <div className="border border-gray-200 rounded-lg p-4 mb-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">プランニング段階</h3>
+                      <div className="form-group">
+                        <label className="form-label">対応・方針（作成者がやろうと思うこと）</label>
+                        <textarea
+                          value={(generatedPlan as any)?.planning?.supportMethods || ''}
+                          onChange={(e) => updateGeneratedPlan('planning', { 
+                            ...(generatedPlan as any)?.planning, 
+                            supportMethods: e.target.value 
+                          })}
+                          className="input-field"
+                          rows={4}
+                          placeholder="具体的な支援方針や対応策"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 今回大づかみにとらえた本人像 */}
+                    <div className="border border-gray-200 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">今回大づかみにとらえた本人像</h3>
+                      <div className="form-group">
+                        <textarea
+                          value={(generatedPlan as any)?.personSummary || ''}
+                          onChange={(e) => updateGeneratedPlan('personSummary', e.target.value)}
+                          className="input-field"
+                          rows={4}
+                          placeholder="100文字程度で本人の全体像を記載"
+                        />
+                        <p className="text-xs text-gray-500 mt-2">（100文字程度目安）</p>
+                      </div>
                     </div>
                   </>
                 )}

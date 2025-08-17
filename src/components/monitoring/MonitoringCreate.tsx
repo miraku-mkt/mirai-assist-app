@@ -181,8 +181,15 @@ const MonitoringCreate: React.FC = () => {
         .map(f => `【${fileTypes.find(t => t.key === f.type)?.label || f.type}】\n${f.content || f.name}\n`)
         .join('\n')
 
-      // AI生成（希望創出型プロンプトを使用）
-      const result = await generateDocumentWithAI('monitoringReport', allContent, user)
+      // AI生成（モニタリング報告書プロンプトを使用）
+      const result = await generateDocumentWithAI(
+        'monitoringReport', 
+        {}, 
+        {
+          interviewText: allContent,
+          userInfo: user
+        }
+      )
       
       setGeneratedReport({
         comprehensiveSupport: result.comprehensiveSupport || '',
